@@ -1,0 +1,26 @@
+title,price,gpu,cpu,ram_gb,storage,status,url,date_sold,date_listed,date_scraped
+Ryzen 5 5600X + RTX 3080 Gaming PC,1149,RTX 3080,Ryzen 5 5600X,16,1TB NVMe,sold,https://www.jawa.gg/listings/1,2024-01-15,2024-01-10,2024-04-01T00:00:00Z
+Ryzen 7 5800X3D + RTX 3080 Ti Build,1399,RTX 3080 Ti,Ryzen 7 5800X3D,32,1TB NVMe,sold,https://www.jawa.gg/listings/2,2024-01-20,2024-01-12,2024-04-01T00:00:00Z
+i5-13600K + RTX 4070 Gaming Rig,1299,RTX 4070,i5-13600K,16,1TB SSD,sold,https://www.jawa.gg/listings/3,2024-02-01,2024-01-25,2024-04-01T00:00:00Z
+i7-13700K + RTX 4070 Ti Super PC,1799,RTX 4070 Ti Super,i7-13700K,32,2TB NVMe,active,https://www.jawa.gg/listings/4,,2024-03-01,2024-04-01T00:00:00Z
+Ryzen 5 5600X + RTX 3070 Build,949,RTX 3070,Ryzen 5 5600X,16,1TB SSD,sold,https://www.jawa.gg/listings/5,2024-02-10,2024-02-05,2024-04-01T00:00:00Z
+Ryzen 5 5600X + RTX 3080 Gaming PC 2,1099,RTX 3080,Ryzen 5 5600X,16,1TB NVMe,sold,https://www.jawa.gg/listings/6,2024-02-20,2024-02-14,2024-04-01T00:00:00Z
+i5-12400F + RTX 3060 Budget Build,699,RTX 3060,i5-12400F,16,512GB SSD,sold,https://www.jawa.gg/listings/7,2024-01-28,2024-01-22,2024-04-01T00:00:00Z
+Ryzen 7 7700X + RTX 4080 High End,2199,RTX 4080,Ryzen 7 7700X,32,2TB NVMe,active,https://www.jawa.gg/listings/8,,2024-03-10,2024-04-01T00:00:00Z
+i5-13600KF + RTX 4060 Ti Mid Range,1099,RTX 4060 Ti,i5-13600KF,16,1TB SSD,sold,https://www.jawa.gg/listings/9,2024-03-05,2024-02-28,2024-04-01T00:00:00Z
+Ryzen 5 5600X + RX 6700 XT AMD Build,899,RX 6700 XT,Ryzen 5 5600X,16,1TB NVMe,sold,https://www.jawa.gg/listings/10,2024-03-15,2024-03-08,2024-04-01T00:00:00Z
+Ryzen 7 5800X3D + RX 6800 XT Gaming,1249,RX 6800 XT,Ryzen 7 5800X3D,32,1TB NVMe,active,https://www.jawa.gg/listings/11,,2024-03-20,2024-04-01T00:00:00Z
+i7-12700K + RTX 3080 Build,1299,RTX 3080,i7-12700K,32,2TB SSD,sold,https://www.jawa.gg/listings/12,2024-01-30,2024-01-18,2024-04-01T00:00:00Z
+Ryzen 9 5900X + RTX 3090 Power Build,1999,RTX 3090,Ryzen 9 5900X,32,2TB NVMe,sold,https://www.jawa.gg/listings/13,2024-02-25,2024-02-15,2024-04-01T00:00:00Z
+i5-12400F + RX 6600 Budget AMD,649,RX 6600,i5-12400F,16,500GB SSD,sold,https://www.jawa.gg/listings/14,2024-03-01,2024-02-22,2024-04-01T00:00:00Z
+Ryzen 5 7600X + RTX 4060 Ti New Gen,1149,RTX 4060 Ti,Ryzen 5 7600X,16,1TB NVMe,active,https://www.jawa.gg/listings/15,,2024-03-25,2024-04-01T00:00:00Z
+i7-14700K + RTX 4080 Super Flagship,2499,RTX 4080 Super,i7-14700K,32,2TB NVMe,active,https://www.jawa.gg/listings/16,,2024-03-28,2024-04-01T00:00:00Z
+Ryzen 5 5600X + RTX 3060 Ti Value,899,RTX 3060 Ti,Ryzen 5 5600X,16,1TB SSD,sold,https://www.jawa.gg/listings/17,2024-03-22,2024-03-15,2024-04-01T00:00:00Z
+i5-13400F + GTX 1660 Super Entry,549,GTX 1660 Super,i5-13400F,8,512GB SSD,sold,https://www.jawa.gg/listings/18,2024-02-18,2024-02-10,2024-04-01T00:00:00Z
+Ryzen 7 7800X3D + RTX 4090 Ultra,3199,RTX 4090,Ryzen 7 7800X3D,32,2TB NVMe,active,https://www.jawa.gg/listings/19,,2024-03-30,2024-04-01T00:00:00Z
+i9-13900K + RTX 4090 Beast,3499,RTX 4090,i9-13900K,64,2TB NVMe,sold,https://www.jawa.gg/listings/20,2024-03-28,2024-03-20,2024-04-01T00:00:00Z
+Ryzen 5 5600X + RTX 3080 V3 Build,1179,RTX 3080,Ryzen 5 5600X,16,1TB NVMe,sold,https://www.jawa.gg/listings/21,2024-03-30,2024-03-24,2024-04-01T00:00:00Z
+i5-12600K + RTX 3070 Ti Mid,1099,RTX 3070 Ti,i5-12600K,16,1TB SSD,sold,https://www.jawa.gg/listings/22,2024-01-22,2024-01-15,2024-04-01T00:00:00Z
+Ryzen 7 5700X + RTX 3060 Ti Build,849,RTX 3060 Ti,Ryzen 7 5700X,16,1TB NVMe,active,https://www.jawa.gg/listings/23,,2024-03-15,2024-04-01T00:00:00Z
+i7-13700KF + RTX 4070 Super Gaming,1549,RTX 4070 Super,i7-13700KF,32,1TB NVMe,sold,https://www.jawa.gg/listings/24,2024-03-18,2024-03-10,2024-04-01T00:00:00Z
+Ryzen 5 3600 + RTX 2060 Budget,599,RTX 2060,Ryzen 5 3600,16,500GB SSD,active,https://www.jawa.gg/listings/25,,2024-02-01,2024-04-01T00:00:00Z
