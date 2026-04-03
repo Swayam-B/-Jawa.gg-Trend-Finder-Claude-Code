@@ -11,6 +11,7 @@ Usage
     python jawa_scraper.py --sold-only   # only scrape sold listings
     python jawa_scraper.py --active-only # only scrape active listings
     python jawa_scraper.py --max-pages 3 # limit pages per section (useful for testing)
+    python jawa_scraper.py --clear-cookies # delete saved session cookies and start fresh
 """
 
 import asyncio
@@ -38,7 +39,12 @@ CHROMIUM_PATH = Path.home() / ".cache/ms-playwright/chromium-1194/chrome-linux/c
 ACTIVE_URL = "https://www.jawa.gg/gaming-pcs"
 SOLD_URL   = "https://www.jawa.gg/shop/full-systems/gaming-pcs-show-sold~5c456b-7fa58"
 
-OUTPUT_CSV = Path("jawa_listings.csv")
+OUTPUT_CSV   = Path("jawa_listings.csv")
+COOKIES_FILE = Path("jawa_cookies.json")
+
+# Cloudflare challenge indicators
+CF_TITLE_RE = re.compile(r"just a moment|checking your browser|attention required|ddos", re.I)
+CF_URL_RE   = re.compile(r"/cdn-cgi/|cf-chl|challenge", re.I)
 
 CSV_FIELDS = [
     "title",
@@ -101,6 +107,69 @@ def parse_date(text: str | None) -> str | None:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+
+# ---------------------------------------------------------------------------
+# Cookie persistence — avoids repeated CF challenges on subsequent runs
+# ---------------------------------------------------------------------------
+
+def load_cookies() -> list[dict]:
+    if COOKIES_FILE.exists():
+        try:
+            return json.loads(COOKIES_FILE.read_text())
+        except Exception:
+            pass
+    return []
+
+
+def save_cookies(cookies: list[dict]) -> None:
+    try:
+        COOKIES_FILE.write_text(json.dumps(cookies, indent=2))
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Cloudflare detection + waiting
+# ---------------------------------------------------------------------------
+
+async def is_cloudflare_challenge(page) -> bool:
+    title = (await page.title()).strip()
+    if CF_TITLE_RE.search(title):
+        return True
+    if CF_URL_RE.search(page.url):
+        return True
+    for sel in ["#cf-challenge-running", "#challenge-form",
+                "[class*='cf-browser-verification']", "div#challenge-body"]:
+        try:
+            if await page.locator(sel).count():
+                return True
+        except Exception:
+            pass
+    return False
+
+
+async def wait_for_cloudflare(page, timeout: int = 35) -> bool:
+    """Wait up to *timeout* seconds for a CF JS challenge to auto-resolve."""
+    print("  [CF] Challenge detected — waiting for auto-resolution…")
+    for elapsed in range(timeout):
+        await asyncio.sleep(1)
+        if not await is_cloudflare_challenge(page):
+            print(f"  [CF] Cleared after {elapsed + 1}s ✓")
+            return True
+    print(f"  [CF] Still blocked after {timeout}s — run --debug to inspect the HTML.")
+    return False
+
+
+async def human_scroll(page) -> None:
+    """Simulate a human slowly scrolling down then back up."""
+    try:
+        for delta in [300, 400, 300, 200, -200, -300]:
+            await page.mouse.wheel(0, delta)
+            await page.wait_for_timeout(random.randint(120, 350))
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +515,17 @@ async def scrape_section(
         # Extra wait for JS rendering
         await page.wait_for_timeout(int(random_delay(2.0, 3.5) * 1000))
 
+        # Check for Cloudflare challenge and wait if needed
+        if await is_cloudflare_challenge(page):
+            cleared = await wait_for_cloudflare(page)
+            if not cleared:
+                print("  [CF] Could not bypass challenge — aborting section.")
+                break
+            await page.wait_for_timeout(int(random_delay(2.0, 3.0) * 1000))
+
+        # Simulate human reading before scraping
+        await human_scroll(page)
+
         if debug:
             dump_path = Path(f"debug_{status}_page{page_num}.html")
             dump_path.write_text(await page.content(), encoding="utf-8")
@@ -497,6 +577,12 @@ async def scrape_section(
 
         listings.extend(page_listings)
 
+        # Persist cookies so next run skips the CF challenge
+        try:
+            save_cookies(await context.cookies())
+        except Exception:
+            pass
+
         # Pagination
         next_url = await get_next_page_url(page)
         if next_url and next_url != url:
@@ -527,6 +613,10 @@ def save_csv(listings: list[dict], path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 async def main(args: argparse.Namespace) -> None:
+    if getattr(args, 'clear_cookies', False) and COOKIES_FILE.exists():
+        COOKIES_FILE.unlink()
+        print("[info] Cleared saved cookies — starting a fresh session.")
+
     chromium_path = CHROMIUM_PATH
     if not chromium_path.exists():
         # Let Playwright find whatever it has installed
@@ -566,7 +656,43 @@ async def main(args: argparse.Namespace) -> None:
         )
 
         # Apply comprehensive stealth patches to bypass Cloudflare bot detection
-        await Stealth().apply_stealth_async(context)
+        await Stealth(
+            navigator_webdriver=True, navigator_user_agent=True,
+            navigator_languages=True, navigator_platform=True,
+            navigator_plugins=True, navigator_vendor=True,
+            navigator_permissions=True, navigator_hardware_concurrency=True,
+            chrome_app=True, chrome_csi=True, chrome_load_times=True,
+            chrome_runtime=False, webgl_vendor=True, media_codecs=True,
+            hairline=True,
+            navigator_platform_override="Win32",
+            navigator_languages_override=("en-US", "en"),
+        ).apply_stealth_async(context)
+
+        # Restore saved cookies — skip the CF challenge on repeat runs
+        saved_cookies = load_cookies()
+        if saved_cookies:
+            try:
+                await context.add_cookies(saved_cookies)
+                print(f"[info] Restored {len(saved_cookies)} saved cookies.")
+            except Exception as e:
+                print(f"[warn] Could not restore cookies: {e}")
+
+        # Warm-up: visit homepage first so CF sees natural browsing behaviour
+        print("\n[warm-up] Visiting jawa.gg homepage…")
+        warmup = await context.new_page()
+        try:
+            await warmup.goto("https://www.jawa.gg", wait_until="domcontentloaded", timeout=30_000)
+            await warmup.wait_for_timeout(int(random_delay(2.5, 4.0) * 1000))
+            if await is_cloudflare_challenge(warmup):
+                await wait_for_cloudflare(warmup)
+            await human_scroll(warmup)
+            save_cookies(await context.cookies())
+            print("[warm-up] Done.")
+        except Exception as e:
+            print(f"[warm-up] Skipped: {e}")
+        finally:
+            await warmup.close()
+        await asyncio.sleep(random_delay(2.0, 3.0))
 
         all_listings: list[dict] = []
 
@@ -586,6 +712,11 @@ async def main(args: argparse.Namespace) -> None:
             print(f"\nSold listings collected: {len(sold)}")
             all_listings.extend(sold)
 
+        # Final cookie save
+        try:
+            save_cookies(await context.cookies())
+        except Exception:
+            pass
         await browser.close()
 
     print(f"\nTotal listings: {len(all_listings)}")
@@ -605,6 +736,8 @@ def parse_args() -> argparse.Namespace:
                         help="Only scrape active listings")
     parser.add_argument("--max-pages", type=int, default=None, metavar="N",
                         help="Stop after N pages per section (useful for testing)")
+    parser.add_argument("--clear-cookies", action="store_true",
+                        help="Delete saved session cookies and start a fresh CF session")
     return parser.parse_args()
 
 
