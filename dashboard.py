@@ -163,9 +163,22 @@ def no_data_fig(title="No data available"):
 # Section 1 — Market Trends
 # ---------------------------------------------------------------------------
 
+GRAPH_CONFIG = {
+    "displayModeBar": "hover",
+    "modeBarButtonsToRemove": [
+        "autoScale2d", "lasso2d", "select2d",
+        "hoverClosestCartesian", "hoverCompareCartesian",
+        "toggleSpikelines", "toImage",
+    ],
+    "displaylogo": False,
+    "doubleClick": "reset+autosize",
+    "scrollZoom": True,
+}
+
+
 def chart_card(fig, height=320):
     return dbc.Card(
-        dcc.Graph(figure=fig, config={"displayModeBar": False, "doubleClick": "reset+autosize"},
+        dcc.Graph(figure=fig, config=GRAPH_CONFIG,
                   style={"height": f"{height}px"}),
         className="chart-card mb-3"
     )
@@ -703,6 +716,11 @@ app.index_string = """<!DOCTYPE html>
       }
       .rc-slider-track { background-color: #00e5ff !important; }
       .rc-slider-handle { border-color: #00e5ff !important; }
+      /* Modebar dark theme */
+      .modebar { background: #1a1a1a !important; border: 1px solid #2a2a2a !important; border-radius: 6px !important; }
+      .modebar-btn path { fill: #888 !important; }
+      .modebar-btn:hover path { fill: #00e5ff !important; }
+      .modebar-btn.active path { fill: #00e5ff !important; }
     </style>
   </head>
   <body>
