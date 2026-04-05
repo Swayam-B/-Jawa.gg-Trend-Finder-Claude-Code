@@ -165,7 +165,7 @@ def no_data_fig(title="No data available"):
 
 def chart_card(fig, height=320):
     return dbc.Card(
-        dcc.Graph(figure=fig, config={"displayModeBar": False},
+        dcc.Graph(figure=fig, config={"displayModeBar": False, "doubleClick": "reset+autosize"},
                   style={"height": f"{height}px"}),
         className="chart-card mb-3"
     )

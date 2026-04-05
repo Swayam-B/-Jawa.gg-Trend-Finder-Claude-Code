@@ -194,7 +194,7 @@ CARD_SELECTORS = [
     # Anchor-based — jawa often wraps each card in an <a>
     "a[href*='/listings/']",
     "a[href*='/item/']",
-    "a[href*='/p/']",
+    "a[href*='jawa.gg/p/']",
     # Grid children fallback
     "main article",
     "article",
@@ -291,7 +291,10 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
         # Maybe the card itself is an <a>
         href = await _attr(card, "href")
     if href:
-        result["url"] = href if href.startswith("http") else f"https://www.jawa.gg{href}"
+        full_url = href if href.startswith("http") else f"https://www.jawa.gg{href}"
+        # Only accept jawa.gg URLs — skip marketing/email links from other domains
+        if "jawa.gg" in full_url:
+            result["url"] = full_url
 
     # --- Title ---
     for sel in TITLE_SELECTORS:
@@ -565,6 +568,14 @@ async def scrape_section(
                     finally:
                         await detail_page.close()
                     await asyncio.sleep(random_delay())
+
+                # Skip non-product cards (newsletter signups, ads, etc.)
+                title_text = (listing.get("title") or "").upper()
+                if not listing.get("url") or any(
+                    kw in title_text for kw in ("SIGN UP", "SUBSCRIBE", "NEWSLETTER", "EMAIL")
+                ):
+                    print(f"  [skip] Non-listing card: {title_text[:60]!r}")
+                    continue
 
                 page_listings.append(listing)
 
