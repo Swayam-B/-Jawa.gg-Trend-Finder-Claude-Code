@@ -179,6 +179,8 @@ async def human_scroll(page) -> None:
 # Ordered list of CSS selectors to try when looking for listing cards.
 # The first one that returns >= 1 elements wins.
 CARD_SELECTORS = [
+    # jawa.gg-specific: every listing title is an <a href="/product/...">
+    "a[href*='/product/']",
     # Semantic / data-attribute selectors (most reliable on JS-rendered sites)
     "[data-listing-id]",
     "[data-product-id]",
@@ -191,16 +193,12 @@ CARD_SELECTORS = [
     "[class*='product-card']",
     "[class*='ItemCard']",
     "[class*='item-card']",
-    # Anchor-based — jawa often wraps each card in an <a>
+    # Anchor-based fallbacks
     "a[href*='/listings/']",
     "a[href*='/item/']",
-    "a[href*='jawa.gg/p/']",
-    # Grid children fallback
+    # Grid children fallback — NOT ul/li which catches pagination
     "main article",
     "article",
-    # Last resort: any li that looks like a card
-    "ul[class*='grid'] li",
-    "ul[class*='list'] li",
 ]
 
 PRICE_SELECTORS = [
@@ -279,65 +277,97 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
     """
     Given a Playwright locator pointing to a single listing card,
     extract all available fields.  Falls back gracefully on missing elements.
+
+    Handles two card shapes:
+    - <a href="/product/..."> cards (jawa.gg's actual link structure): the
+      element itself IS the title link; price lives in a sibling element.
+    - Container cards (div/li/article wrapping an inner <a>): standard path.
     """
     scraped = now_iso()
     result: dict = {f: None for f in CSV_FIELDS}
     result["status"] = status
     result["date_scraped"] = scraped
 
+    # Detect whether the matched element is itself the product <a> link
+    is_anchor: bool = await card.evaluate("el => el.tagName === 'A'")
+
     # --- URL ---
-    href = await _attr(card.locator("a").first, "href")
-    if not href:
-        # Maybe the card itself is an <a>
+    if is_anchor:
         href = await _attr(card, "href")
+    else:
+        # Prefer a direct /product/ link inside the card, then any <a>
+        inner = card.locator("a[href*='/product/']")
+        href = await _attr(inner.first, "href") if await inner.count() else ""
+        if not href:
+            href = await _attr(card.locator("a").first, "href")
+
     if href:
         full_url = href if href.startswith("http") else f"https://www.jawa.gg{href}"
-        # Only accept jawa.gg URLs — skip marketing/email links from other domains
         if "jawa.gg" in full_url:
             result["url"] = full_url
 
     # --- Title ---
-    for sel in TITLE_SELECTORS:
-        txt = await _text(card.locator(sel))
-        if txt:
-            result["title"] = txt
-            break
-    if not result["title"]:
-        # Use the full text of the card as a last resort
-        result["title"] = (await _text(card))[:200] or None
+    if is_anchor:
+        # The link text IS the listing title (e.g. "RTX 4070 | Ryzen 5 7600X | 16GB | 1TB SSD")
+        result["title"] = (await _text(card)) or None
+    else:
+        for sel in TITLE_SELECTORS:
+            txt = await _text(card.locator(sel))
+            # Reject suspiciously short strings (page numbers, icons, etc.)
+            if txt and len(txt) > 8:
+                result["title"] = txt
+                break
+        if not result["title"]:
+            result["title"] = (await _text(card))[:200] or None
 
     # --- Price ---
-    for sel in PRICE_SELECTORS:
-        txt = await _text(card.locator(sel))
-        if txt and "$" in txt:
-            result["price"] = parse_price(txt)
-            break
-    if result["price"] is None:
-        # Scan all text for a price-like pattern
-        full_text = await _text(card)
-        m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", full_text)
-        if m:
-            result["price"] = parse_price(m.group(1))
+    if is_anchor:
+        # Price is NOT inside the <a> — walk next siblings via JS
+        price_text: str = await card.evaluate("""el => {
+            let node = el.nextElementSibling;
+            for (let i = 0; i < 6 && node; i++, node = node.nextElementSibling) {
+                const t = (node.textContent || '').trim();
+                if (t.includes('$')) return t;
+            }
+            return '';
+        }""")
+        if price_text:
+            m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", price_text)
+            if m:
+                result["price"] = parse_price(m.group(1))
+    else:
+        for sel in PRICE_SELECTORS:
+            txt = await _text(card.locator(sel))
+            if txt and "$" in txt:
+                result["price"] = parse_price(txt)
+                break
+        if result["price"] is None:
+            full_text = await _text(card)
+            m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", full_text)
+            if m:
+                result["price"] = parse_price(m.group(1))
 
     # --- Dates ---
-    for sel in DATE_SELECTORS:
-        loc = card.locator(sel)
-        count = await loc.count()
-        for i in range(count):
-            item = loc.nth(i)
-            txt = await _text(item)
-            dt_attr = await _attr(item, "datetime")
-            date_str = parse_date(dt_attr or txt)
-            if date_str:
-                lbl = (await _text(item.locator(".."))[:50]).lower()
-                if status == "sold" and result["date_sold"] is None:
-                    result["date_sold"] = date_str
-                elif result["date_listed"] is None:
-                    result["date_listed"] = date_str
+    # For <a> cards the date elements live outside the anchor; skip for now —
+    # date_listed will be filled by deep_scrape_listing if needed.
+    if not is_anchor:
+        for sel in DATE_SELECTORS:
+            loc = card.locator(sel)
+            count = await loc.count()
+            for i in range(count):
+                item = loc.nth(i)
+                txt = await _text(item)
+                dt_attr = await _attr(item, "datetime")
+                date_str = parse_date(dt_attr or txt)
+                if date_str:
+                    if status == "sold" and result["date_sold"] is None:
+                        result["date_sold"] = date_str
+                    elif result["date_listed"] is None:
+                        result["date_listed"] = date_str
 
-    # --- Specs (GPU, CPU, RAM, Storage) from all visible text ---
-    full_text = await _text(card)
-    _fill_specs(result, full_text)
+    # --- Specs (GPU, CPU, RAM, Storage) from title / full card text ---
+    spec_source = result.get("title") or await _text(card)
+    _fill_specs(result, spec_source)
 
     return result
 
@@ -551,11 +581,15 @@ async def scrape_section(
             try:
                 listing = await extract_from_card(card, url, status)
 
-                # If we couldn't get specs from the card, do a deep scrape
+                # Deep-scrape if specs are missing OR if we need date_listed/date_sold
                 needs_deep = (
                     listing.get("url")
-                    and not any([listing.get("gpu"), listing.get("cpu"),
+                    and (
+                        not any([listing.get("gpu"), listing.get("cpu"),
                                  listing.get("ram_gb"), listing.get("storage")])
+                        or (status == "sold" and not listing.get("date_sold"))
+                        or not listing.get("date_listed")
+                    )
                 )
                 if needs_deep and listing["url"]:
                     detail_page = await context.new_page()
@@ -730,9 +764,24 @@ async def main(args: argparse.Namespace) -> None:
             pass
         await browser.close()
 
-    print(f"\nTotal listings: {len(all_listings)}")
-    if all_listings:
-        save_csv(all_listings, OUTPUT_CSV)
+    # Deduplicate by URL (keep first occurrence)
+    seen_urls: set[str] = set()
+    unique_listings: list[dict] = []
+    for lst in all_listings:
+        url = lst.get("url") or ""
+        if url and url in seen_urls:
+            continue
+        if url:
+            seen_urls.add(url)
+        unique_listings.append(lst)
+
+    removed = len(all_listings) - len(unique_listings)
+    if removed:
+        print(f"Removed {removed} duplicate listing(s).")
+
+    print(f"\nTotal listings: {len(unique_listings)}")
+    if unique_listings:
+        save_csv(unique_listings, OUTPUT_CSV)
     else:
         print("No listings found. Try running with --debug to inspect the page HTML.")
 

@@ -302,37 +302,53 @@ def extract_ram_gb(text: str) -> int | None:
 # Storage extraction
 # ---------------------------------------------------------------------------
 
-_STORAGE_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(TB|GB)\s*(NVMe|SSD|HDD|M\.2|SATA)?",
+# GB + explicit drive-type keyword (e.g. "256GB SSD", "512GB NVMe")
+_STORAGE_GB_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*GB\s*(?:/\s*)?(\d+(?:\.\d+)?\s*GB\s*)?(NVMe|SSD|HDD|M\.2|SATA)",
+    re.IGNORECASE,
+)
+# TB size — always storage, never VRAM or RAM
+_STORAGE_TB_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*TB\b(?:\s*(NVMe|SSD|HDD|M\.2|SATA))?",
     re.IGNORECASE,
 )
 
+_DRIVE_TYPE_MAP = {"NVME": "NVMe", "SSD": "SSD", "HDD": "HDD", "M.2": "NVMe", "SATA": "SSD"}
+
+
+def _fmt_size(num_str: str, unit: str) -> str:
+    num = float(num_str)
+    if unit.upper() == "TB" and "." in num_str and not num_str.endswith(".0"):
+        return f"{int(num * 1024)}GB"
+    return f"{int(num)}{unit.upper()}" if num == int(num) else f"{num_str}{unit.upper()}"
+
 
 def extract_storage(text: str) -> str | None:
-    """Return a normalised storage string like '1TB NVMe SSD' or None."""
-    m = _STORAGE_RE.search(text)
-    if not m:
-        return None
-    size_num = m.group(1)
-    size_unit = m.group(2).upper()
-    drive_type_raw = m.group(3) or ""
+    """
+    Return a normalised storage string like '256GB SSD' or '2TB NVMe'.
 
-    # Normalise drive-type casing
-    type_map = {"NVME": "NVMe", "SSD": "SSD", "HDD": "HDD", "M.2": "NVMe", "SATA": "SSD"}
-    drive_type = type_map.get(drive_type_raw.upper(), drive_type_raw.upper())
+    Requires either:
+    - a TB unit (always storage, never GPU VRAM or RAM), or
+    - a GB value immediately followed by a drive-type keyword (NVMe/SSD/HDD/M.2/SATA).
 
-    # Convert e.g. 0.5TB -> 512GB, but keep whole-number TB as-is
-    if size_unit == "TB" and "." in size_num and not size_num.endswith(".0"):
-        gb = int(float(size_num) * 1024)
-        size_str = f"{gb}GB"
-    else:
-        # Strip trailing .0 from whole numbers
-        num = float(size_num)
-        size_str = f"{int(num)}{size_unit}" if num == int(num) else f"{size_num}{size_unit}"
-
-    if drive_type:
+    This prevents matching bare '16GB' (RAM) or '8GB' (GPU VRAM).
+    """
+    # 1. Prefer explicit GB + drive type — most specific
+    m = _STORAGE_GB_RE.search(text)
+    if m:
+        size_str = _fmt_size(m.group(1), "GB")
+        drive_type = _DRIVE_TYPE_MAP.get(m.group(3).upper(), m.group(3).upper())
         return f"{size_str} {drive_type}"
-    return size_str
+
+    # 2. TB value (optionally followed by drive type)
+    m = _STORAGE_TB_RE.search(text)
+    if m:
+        size_str = _fmt_size(m.group(1), "TB")
+        drive_raw = (m.group(2) or "").upper()
+        drive_type = _DRIVE_TYPE_MAP.get(drive_raw, drive_raw)
+        return f"{size_str} {drive_type}".strip() if drive_type else size_str
+
+    return None
 
 
 if __name__ == "__main__":
