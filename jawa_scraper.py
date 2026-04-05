@@ -36,7 +36,7 @@ from normalize import normalize_gpu, normalize_cpu, extract_ram_gb, extract_stor
 
 CHROMIUM_PATH = Path.home() / ".cache/ms-playwright/chromium-1194/chrome-linux/chrome"
 
-ACTIVE_URL = "https://www.jawa.gg/gaming-pcs"
+ACTIVE_URL = "https://www.jawa.gg/shop/full-systems/gaming-pcs-0V1FT57L"
 SOLD_URL   = "https://www.jawa.gg/shop/full-systems/gaming-pcs-show-sold~5c456b-7fa58"
 
 OUTPUT_CSV   = Path("jawa_listings.csv")
@@ -243,7 +243,6 @@ PAGINATION_SELECTORS = [
     "[class*='pagination'] a:last-child",
     "[class*='Pagination'] a:last-child",
     "a[rel='next']",
-    "nav a:last-child",
 ]
 
 
@@ -516,21 +515,52 @@ async def find_card_selector(page: Page) -> str | None:
     return None
 
 
-async def get_next_page_url(page: Page) -> str | None:
-    """Return the URL of the next page, or None if we're on the last page."""
+async def get_next_page_url(page: Page, current_url: str) -> str | None:
+    """Return the URL of the next page, or None if we're on the last page.
+
+    Validates that the candidate URL stays on the same shop section as
+    *current_url* — this prevents accidentally following site navigation
+    links into unrelated shop sections (e.g. "PC Parts & Components").
+    """
+    from urllib.parse import urlparse, urlsplit
+
+    cur = urlsplit(current_url)
+    cur_path = cur.path.rstrip("/")   # e.g. /shop/full-systems/gaming-pcs-show-sold~…
+
     for sel in PAGINATION_SELECTORS:
         try:
             loc = page.locator(sel)
             count = await loc.count()
-            if count:
-                href = await loc.first.get_attribute("href")
-                if href:
-                    return href if href.startswith("http") else f"https://www.jawa.gg{href}"
-                # Some pagination is button-click based; check disabled state
-                disabled = await loc.first.get_attribute("disabled")
-                aria_disabled = await loc.first.get_attribute("aria-disabled")
-                if disabled or aria_disabled == "true":
-                    return None
+            if not count:
+                continue
+
+            href = await loc.first.get_attribute("href")
+            if href:
+                full_url = href if href.startswith("http") else f"https://www.jawa.gg{href}"
+
+                # Must stay on jawa.gg
+                if "jawa.gg" not in full_url:
+                    continue
+
+                nxt = urlsplit(full_url)
+                nxt_path = nxt.path.rstrip("/")
+
+                # Accept only if:
+                #  (a) same path, just different query string  (e.g. ?page=2), OR
+                #  (b) next path starts with current path     (sub-path pagination)
+                if nxt_path == cur_path or nxt_path.startswith(cur_path):
+                    return full_url
+
+                # Reject — different section (nav link, footer link, etc.)
+                print(f"  [pag] Skipping off-section URL: {full_url}")
+                continue
+
+            # Button-based pagination (click to load more)
+            disabled = await loc.first.get_attribute("disabled")
+            aria_disabled = await loc.first.get_attribute("aria-disabled")
+            if disabled or aria_disabled == "true":
+                return None
+
         except Exception:
             pass
     return None
@@ -654,7 +684,7 @@ async def scrape_section(
             pass
 
         # Pagination
-        next_url = await get_next_page_url(page)
+        next_url = await get_next_page_url(page, url)
         if next_url and next_url != url:
             url = next_url
             await asyncio.sleep(random_delay())
