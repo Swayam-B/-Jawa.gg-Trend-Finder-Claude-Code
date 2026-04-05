@@ -306,14 +306,28 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
         if "jawa.gg" in full_url:
             result["url"] = full_url
 
+    # For <a> cards, fetch inner_text once and reuse for title, price, and specs.
+    anchor_text: str = (await _text(card)) if is_anchor else ""
+
     # --- Title ---
     if is_anchor:
-        # The link text IS the listing title (e.g. "RTX 4070 | Ryzen 5 7600X | 16GB | 1TB SSD")
-        result["title"] = (await _text(card)) or None
+        # inner_text includes badge labels (all-caps like "VALUE PCS", "FREE SHIPPING")
+        # and the price line ("$459.99").  Pick the first line that is neither.
+        title = None
+        for line in anchor_text.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("$"):
+                continue
+            if line == line.upper() and len(line) <= 40:   # all-caps badge
+                continue
+            if len(line) < 8:
+                continue
+            title = line
+            break
+        result["title"] = title or (anchor_text[:200] or None)
     else:
         for sel in TITLE_SELECTORS:
             txt = await _text(card.locator(sel))
-            # Reject suspiciously short strings (page numbers, icons, etc.)
             if txt and len(txt) > 8:
                 result["title"] = txt
                 break
@@ -322,19 +336,11 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
 
     # --- Price ---
     if is_anchor:
-        # Price is NOT inside the <a> — walk next siblings via JS
-        price_text: str = await card.evaluate("""el => {
-            let node = el.nextElementSibling;
-            for (let i = 0; i < 6 && node; i++, node = node.nextElementSibling) {
-                const t = (node.textContent || '').trim();
-                if (t.includes('$')) return t;
-            }
-            return '';
-        }""")
-        if price_text:
-            m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", price_text)
-            if m:
-                result["price"] = parse_price(m.group(1))
+        # The price IS inside the <a> (entire card is wrapped in it).
+        # Pull it straight from the already-fetched inner_text.
+        m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", anchor_text)
+        if m:
+            result["price"] = parse_price(m.group(1))
     else:
         for sel in PRICE_SELECTORS:
             txt = await _text(card.locator(sel))
@@ -348,8 +354,7 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
                 result["price"] = parse_price(m.group(1))
 
     # --- Dates ---
-    # For <a> cards the date elements live outside the anchor; skip for now —
-    # date_listed will be filled by deep_scrape_listing if needed.
+    # <a> cards don't expose date elements; deep_scrape_listing will handle them.
     if not is_anchor:
         for sel in DATE_SELECTORS:
             loc = card.locator(sel)
@@ -365,8 +370,8 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
                     elif result["date_listed"] is None:
                         result["date_listed"] = date_str
 
-    # --- Specs (GPU, CPU, RAM, Storage) from title / full card text ---
-    spec_source = result.get("title") or await _text(card)
+    # --- Specs (GPU, CPU, RAM, Storage) parsed from the clean title ---
+    spec_source = result.get("title") or anchor_text or await _text(card)
     _fill_specs(result, spec_source)
 
     return result
@@ -403,25 +408,60 @@ async def deep_scrape_listing(page: Page, url: str, status: str) -> dict:
         await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
         await page.wait_for_timeout(int(random_delay(1.5, 2.5) * 1000))
 
-        # Title — usually in h1
-        result["title"] = await _text(page.locator("h1").first) or None
+        # Title — h1 on the product page contains the full listing title with specs
+        h1_text = await _text(page.locator("h1").first) or ""
+        if h1_text:
+            result["title"] = h1_text
 
-        # Price
+        # Specs — parse from h1 ONLY to avoid picking up related/recommended listings
+        # that appear elsewhere on the page.
+        if h1_text:
+            _fill_specs(result, h1_text)
+
+        # If h1 was empty or incomplete, try the product description section only
+        if not any([result.get("gpu"), result.get("cpu")]):
+            for section_sel in [
+                "[class*='description']", "[class*='spec']", "[class*='detail']",
+                "main p", "[class*='product']",
+            ]:
+                section_text = await _text(page.locator(section_sel).first)
+                if section_text:
+                    _fill_specs(result, section_text)
+                    if result.get("gpu") or result.get("cpu"):
+                        break
+
+        # JSON-LD structured data (most reliable when present)
+        scripts = page.locator("script[type='application/ld+json']")
+        ld_count = await scripts.count()
+        for i in range(ld_count):
+            try:
+                raw = await scripts.nth(i).inner_text()
+                data = json.loads(raw)
+                _extract_jsonld(result, data)
+            except Exception:
+                pass
+
+        # Price — try specific selectors first, then search the product area only
         for sel in PRICE_SELECTORS:
-            txt = await _text(page.locator(sel))
+            txt = await _text(page.locator(sel).first)
             if txt and "$" in txt:
                 result["price"] = parse_price(txt)
                 break
         if result["price"] is None:
-            m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", await _text(page.locator("body")))
-            if m:
-                result["price"] = parse_price(m.group(1))
+            # Narrow to main content to avoid sidebar/related listing prices
+            for container in ["main", "article", "[class*='product']", "body"]:
+                container_text = await _text(page.locator(container).first)
+                if container_text:
+                    m = re.search(r"\$\s*([\d,]+(?:\.\d{2})?)", container_text)
+                    if m:
+                        result["price"] = parse_price(m.group(1))
+                        break
 
-        # Dates
+        # Dates — look in the main content only
         for sel in DATE_SELECTORS:
             loc = page.locator(sel)
             count = await loc.count()
-            for i in range(count):
+            for i in range(min(count, 10)):   # cap to avoid iterating the whole page
                 item = loc.nth(i)
                 dt_attr = await _attr(item, "datetime")
                 txt = await _text(item)
@@ -431,21 +471,6 @@ async def deep_scrape_listing(page: Page, url: str, status: str) -> dict:
                         result["date_sold"] = date_str
                     elif result["date_listed"] is None:
                         result["date_listed"] = date_str
-
-        # Specs from page body
-        body_text = await _text(page.locator("body"))
-        _fill_specs(result, body_text)
-
-        # Also try JSON-LD structured data
-        scripts = page.locator("script[type='application/ld+json']")
-        count = await scripts.count()
-        for i in range(count):
-            try:
-                raw = await scripts.nth(i).inner_text()
-                data = json.loads(raw)
-                _extract_jsonld(result, data)
-            except Exception:
-                pass
 
     except Exception as e:
         print(f"  [warn] deep_scrape failed for {url}: {e}")

@@ -69,11 +69,22 @@ _gpu(r"GTX\s*1080\s*Ti", "GTX 1080 Ti")
 _gpu(r"GTX\s*1080", "GTX 1080")
 _gpu(r"GTX\s*1070\s*Ti", "GTX 1070 Ti")
 _gpu(r"GTX\s*1070", "GTX 1070")
+_gpu(r"GTX\s*1060\s*6\s*GB", "GTX 1060 6GB")
+_gpu(r"GTX\s*1060\s*3\s*GB", "GTX 1060 3GB")
 _gpu(r"GTX\s*1060", "GTX 1060")
+_gpu(r"GTX\s*1050\s*Ti", "GTX 1050 Ti")
+_gpu(r"GTX\s*1050", "GTX 1050")
+_gpu(r"GTX\s*980\s*Ti", "GTX 980 Ti")
+_gpu(r"GTX\s*980", "GTX 980")
+_gpu(r"GTX\s*970", "GTX 970")
+_gpu(r"GTX\s*960", "GTX 960")
+_gpu(r"GTX\s*950", "GTX 950")
 
 # --- AMD Radeon RX 9000 series ---
 _gpu(r"RX\s*9070\s*XT", "RX 9070 XT")
 _gpu(r"RX\s*9070", "RX 9070")
+_gpu(r"RX\s*9060\s*XT", "RX 9060 XT")
+_gpu(r"RX\s*9060", "RX 9060")
 
 # --- AMD Radeon RX 7000 series ---
 _gpu(r"RX\s*7900\s*XTX", "RX 7900 XTX")
@@ -103,6 +114,22 @@ _gpu(r"RX\s*5700\s*XT", "RX 5700 XT")
 _gpu(r"RX\s*5700", "RX 5700")
 _gpu(r"RX\s*5600\s*XT", "RX 5600 XT")
 _gpu(r"RX\s*5500\s*XT", "RX 5500 XT")
+_gpu(r"RX\s*5500", "RX 5500")
+
+# --- AMD Radeon RX 500 series (Polaris refresh) ---
+_gpu(r"RX\s*590", "RX 590")
+_gpu(r"RX\s*580\s*8\s*GB", "RX 580 8GB")
+_gpu(r"RX\s*580", "RX 580")
+_gpu(r"RX\s*570\s*4\s*GB", "RX 570 4GB")
+_gpu(r"RX\s*570", "RX 570")
+_gpu(r"RX\s*560", "RX 560")
+_gpu(r"RX\s*550", "RX 550")
+
+# --- AMD Radeon RX 400 series (Polaris) ---
+_gpu(r"RX\s*480\s*8\s*GB", "RX 480 8GB")
+_gpu(r"RX\s*480", "RX 480")
+_gpu(r"RX\s*470", "RX 470")
+_gpu(r"RX\s*460", "RX 460")
 
 # --- Intel Arc ---
 _gpu(r"Arc\s*[AB]\d{3,4}", "Intel Arc")  # fallback; refined below
@@ -183,6 +210,19 @@ _cpu(r"Ryzen\s*7\s*3800X", "Ryzen 7 3800X")
 _cpu(r"Ryzen\s*7\s*3700X", "Ryzen 7 3700X")
 _cpu(r"Ryzen\s*5\s*3600X", "Ryzen 5 3600X")
 _cpu(r"Ryzen\s*5\s*3600", "Ryzen 5 3600")
+_cpu(r"Ryzen\s*5\s*3500X", "Ryzen 5 3500X")
+_cpu(r"Ryzen\s*5\s*3400G", "Ryzen 5 3400G")
+_cpu(r"Ryzen\s*3\s*3300X", "Ryzen 3 3300X")
+_cpu(r"Ryzen\s*3\s*3100", "Ryzen 3 3100")
+_cpu(r"Ryzen\s*3\s*3200G", "Ryzen 3 3200G")
+
+# --- AMD Ryzen 2000 / 1000 series ---
+_cpu(r"Ryzen\s*7\s*2700X", "Ryzen 7 2700X")
+_cpu(r"Ryzen\s*7\s*2700", "Ryzen 7 2700")
+_cpu(r"Ryzen\s*5\s*2600X", "Ryzen 5 2600X")
+_cpu(r"Ryzen\s*5\s*2600", "Ryzen 5 2600")
+_cpu(r"Ryzen\s*5\s*1600\s*AF", "Ryzen 5 1600 AF")
+_cpu(r"Ryzen\s*5\s*1600", "Ryzen 5 1600")
 
 # Generic Ryzen fallback (catches R5/R7/R9 shorthand)
 _cpu(r"R9\s*(\d{4}[A-Z0-9]*)", "Ryzen 9 \\1")
@@ -281,21 +321,42 @@ def normalize_cpu(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 _RAM_RE = re.compile(r"(\d+)\s*GB\s*(?:DDR[45]?|RAM|Memory)", re.IGNORECASE)
-_RAM_RE2 = re.compile(r"(\d+)\s*GB", re.IGNORECASE)
+_STORAGE_GB_CONTEXT = re.compile(
+    r"\d+\s*GB\s*(?:NVMe|SSD|HDD|M\.2|SATA)", re.IGNORECASE
+)
+_RAM_VALID = {4, 8, 12, 16, 24, 32, 48, 64, 96, 128}
 
 
 def extract_ram_gb(text: str) -> int | None:
-    """Return RAM size in GB, or None if not found."""
+    """Return RAM size in GB, or None if not found.
+
+    Strategy:
+    1. Prefer a GB value with an explicit DDR/RAM/Memory qualifier.
+    2. Otherwise collect all bare GB values that are *not* storage (i.e. not
+       immediately followed by NVMe/SSD/HDD/M.2/SATA) and pick the *last*
+       one that is a plausible RAM size.
+
+    Picking the last value handles the common jawa title format:
+       "GPU XGB, CPU, RAM_GB, Storage_GB SSD"
+    where GPU VRAM ("4GB") appears before RAM ("16GB").
+    """
     m = _RAM_RE.search(text)
     if m:
         return int(m.group(1))
-    m = _RAM_RE2.search(text)
-    if m:
-        val = int(m.group(1))
-        # Sanity-check: common RAM sizes
-        if val in {4, 8, 12, 16, 24, 32, 48, 64, 96, 128}:
-            return val
-    return None
+
+    # Mark positions that belong to storage patterns (exclude them)
+    storage_starts = {m.start() for m in _STORAGE_GB_CONTEXT.finditer(text)}
+
+    candidates: list[int] = []
+    for gm in re.finditer(r"(\d+)\s*GB\b", text, re.IGNORECASE):
+        if gm.start() in storage_starts:
+            continue
+        val = int(gm.group(1))
+        if val in _RAM_VALID:
+            candidates.append(val)
+
+    # In typical titles the last non-storage GB value is RAM (GPU VRAM comes first)
+    return candidates[-1] if candidates else None
 
 
 # ---------------------------------------------------------------------------
