@@ -630,8 +630,26 @@ async def scrape_section(
         total_cards = await cards.count()
         print(f"  Found {total_cards} cards using selector: {card_sel!r}")
 
-        page_listings: list[dict] = []
+        # For <a href="/product/..."> selectors each listing has multiple matching
+        # elements (title link + one per photo). Collect unique hrefs first so we
+        # only process one element per listing and skip photo-only links entirely.
+        page_hrefs_seen: set[str] = set()
+        unique_indices: list[int] = []
         for i in range(total_cards):
+            href = await cards.nth(i).get_attribute("href") or ""
+            if href and href in page_hrefs_seen:
+                continue
+            if href:
+                page_hrefs_seen.add(href)
+            unique_indices.append(i)
+
+        skipped = total_cards - len(unique_indices)
+        if skipped:
+            print(f"  Skipping {skipped} duplicate photo link(s) — "
+                  f"{len(unique_indices)} unique listing(s) to process")
+
+        page_listings: list[dict] = []
+        for i in unique_indices:
             card = cards.nth(i)
             try:
                 listing = await extract_from_card(card, url, status)
