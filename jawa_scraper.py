@@ -522,47 +522,85 @@ async def get_next_page_url(page: Page, current_url: str) -> str | None:
     *current_url* — this prevents accidentally following site navigation
     links into unrelated shop sections (e.g. "PC Parts & Components").
     """
-    from urllib.parse import urlparse, urlsplit
+    from urllib.parse import urlsplit, urlencode, urlunsplit, parse_qs
 
     cur = urlsplit(current_url)
-    cur_path = cur.path.rstrip("/")   # e.g. /shop/full-systems/gaming-pcs-show-sold~…
+    cur_path = cur.path.rstrip("/")
 
+    # ── 1. Try standard CSS selectors ──────────────────────────────────────
     for sel in PAGINATION_SELECTORS:
         try:
             loc = page.locator(sel)
-            count = await loc.count()
-            if not count:
+            if not await loc.count():
                 continue
 
             href = await loc.first.get_attribute("href")
             if href:
                 full_url = href if href.startswith("http") else f"https://www.jawa.gg{href}"
-
-                # Must stay on jawa.gg
                 if "jawa.gg" not in full_url:
                     continue
-
                 nxt = urlsplit(full_url)
                 nxt_path = nxt.path.rstrip("/")
-
-                # Accept only if:
-                #  (a) same path, just different query string  (e.g. ?page=2), OR
-                #  (b) next path starts with current path     (sub-path pagination)
                 if nxt_path == cur_path or nxt_path.startswith(cur_path):
                     return full_url
-
-                # Reject — different section (nav link, footer link, etc.)
                 print(f"  [pag] Skipping off-section URL: {full_url}")
                 continue
 
-            # Button-based pagination (click to load more)
             disabled = await loc.first.get_attribute("disabled")
             aria_disabled = await loc.first.get_attribute("aria-disabled")
             if disabled or aria_disabled == "true":
                 return None
-
         except Exception:
             pass
+
+    # ── 2. JavaScript fallback: find ?page=N links and return N+1 ──────────
+    # jawa.gg paginates with ?page=N query params on anchor elements.
+    # Detect the current page number and construct the next-page URL directly.
+    try:
+        next_url: str = await page.evaluate("""(currentUrl) => {
+            const cur = new URL(currentUrl);
+            const currentPage = parseInt(cur.searchParams.get('page') || '0');
+            const nextPage = currentPage + 1;
+
+            // Look for a pagination link pointing to the next page number
+            const candidates = Array.from(
+                document.querySelectorAll('a[href]')
+            );
+            for (const a of candidates) {
+                try {
+                    const u = new URL(a.href, location.origin);
+                    const p = parseInt(u.searchParams.get('page'));
+                    if (p === nextPage && u.pathname === cur.pathname) {
+                        return a.href;
+                    }
+                } catch {}
+            }
+
+            // No explicit next-page link — check if any link points beyond current
+            // (some sites render only visible page numbers)
+            const maxFound = candidates.reduce((max, a) => {
+                try {
+                    const u = new URL(a.href, location.origin);
+                    if (u.pathname !== cur.pathname) return max;
+                    const p = parseInt(u.searchParams.get('page'));
+                    return isNaN(p) ? max : Math.max(max, p);
+                } catch { return max; }
+            }, -1);
+
+            if (maxFound > currentPage) {
+                // There are higher page numbers visible; step to next
+                cur.searchParams.set('page', String(currentPage + 1));
+                return cur.toString();
+            }
+            return null;
+        }""", current_url)
+
+        if next_url:
+            print(f"  [pag] JS found next page: {next_url}")
+            return next_url
+    except Exception as e:
+        print(f"  [pag] JS pagination fallback failed: {e}")
+
     return None
 
 
