@@ -664,6 +664,9 @@ app = dash.Dash(
 )
 app.title = "Jawa.gg Market Trends — AstroLabPCs"
 
+# Expose Flask server for gunicorn (required for Render/production hosting)
+server = app.server
+
 app.index_string = """<!DOCTYPE html>
 <html>
   <head>
@@ -935,4 +938,6 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    import os
+    port = int(os.environ.get("PORT", 8050))
+    app.run(debug=False, host="0.0.0.0", port=port)
