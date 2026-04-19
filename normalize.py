@@ -360,6 +360,66 @@ def extract_ram_gb(text: str) -> int | None:
 
 
 # ---------------------------------------------------------------------------
+# Color / theme extraction
+# ---------------------------------------------------------------------------
+
+# Ordered list of (regex, canonical). Most specific / compound phrases first so
+# "all white" wins over a stray "white" mention; "snow"/"frost"/"arctic" count
+# as white; "stealth"/"obsidian"/"midnight" count as black.
+_COLOR_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\ball\s*white\b",                 re.I), "White"),
+    (re.compile(r"\ball\s*black\b",                 re.I), "Black"),
+    (re.compile(r"\b(?:snow|frost|arctic|blizzard)\b", re.I), "White"),
+    (re.compile(r"\b(?:stealth|obsidian|midnight|blackout)\b", re.I), "Black"),
+    (re.compile(r"\bwhite\b",                       re.I), "White"),
+    (re.compile(r"\bblack\b",                       re.I), "Black"),
+    (re.compile(r"\bpink\b",                        re.I), "Pink"),
+    (re.compile(r"\bpurple\b",                      re.I), "Purple"),
+    (re.compile(r"\bred\b",                         re.I), "Red"),
+    (re.compile(r"\b(?:blue|cyan|aqua)\b",          re.I), "Blue"),
+    (re.compile(r"\b(?:green|lime)\b",              re.I), "Green"),
+    (re.compile(r"\b(?:silver|chrome)\b",           re.I), "Silver"),
+    (re.compile(r"\b(?:gray|grey|graphite)\b",      re.I), "Gray"),
+]
+
+# Words that look like colors in context but should be ignored (they commonly
+# appear in PC-part names and would produce false positives).
+_COLOR_STOPWORDS = re.compile(
+    r"\b(?:red\s*dragon|red\s*devil|blackbird|blueprint|white\s*noise)\b",
+    re.I,
+)
+
+
+def extract_color(text: str) -> str | None:
+    """Return the dominant color / theme of a build, or None if none detected.
+
+    Scans free-form text for color keywords. Compound phrases like "all white"
+    are matched first, then bare colors. If both white and black appear as
+    bare words (no "all" qualifier, no theme synonym), returns "Mixed".
+    """
+    if not text:
+        return None
+    clean = _COLOR_STOPWORDS.sub("", text)
+
+    best: str | None = None
+    best_pos = len(clean) + 1
+    for pattern, canonical in _COLOR_PATTERNS:
+        m = pattern.search(clean)
+        if m and m.start() < best_pos:
+            best = canonical
+            best_pos = m.start()
+
+    # If both White and Black show up as bare words, flag as mixed/two-tone
+    if best in ("White", "Black"):
+        has_white = re.search(r"\bwhite\b", clean, re.I) is not None
+        has_black = re.search(r"\bblack\b", clean, re.I) is not None
+        has_all = re.search(r"\ball\s*(?:white|black)\b", clean, re.I) is not None
+        if has_white and has_black and not has_all:
+            return "Mixed"
+    return best
+
+
+# ---------------------------------------------------------------------------
 # Storage extraction
 # ---------------------------------------------------------------------------
 

@@ -27,7 +27,9 @@ from pathlib import Path
 from playwright.async_api import async_playwright, Page, BrowserContext
 from playwright_stealth import Stealth
 
-from normalize import normalize_gpu, normalize_cpu, extract_ram_gb, extract_storage
+from normalize import (
+    normalize_gpu, normalize_cpu, extract_ram_gb, extract_storage, extract_color,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +55,7 @@ CSV_FIELDS = [
     "cpu",
     "ram_gb",
     "storage",
+    "color",
     "status",
     "url",
     "date_sold",
@@ -446,7 +449,7 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
 
 
 def _fill_specs(result: dict, text: str) -> None:
-    """Fill GPU/CPU/RAM/storage fields from raw text if not already set."""
+    """Fill GPU/CPU/RAM/storage/color fields from raw text if not already set."""
     if not result.get("gpu"):
         result["gpu"] = normalize_gpu(text)
     if not result.get("cpu"):
@@ -455,6 +458,8 @@ def _fill_specs(result: dict, text: str) -> None:
         result["ram_gb"] = extract_ram_gb(text)
     if not result.get("storage"):
         result["storage"] = extract_storage(text)
+    if not result.get("color"):
+        result["color"] = extract_color(text)
 
 
 # ---------------------------------------------------------------------------
