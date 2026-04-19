@@ -21,24 +21,64 @@ from dash import Input, Output, State, dash_table, dcc, html
 
 CSV_PATH = Path(__file__).parent / "jawa_listings.csv"
 
+# Jawa-inspired dark palette: near-black surfaces with a mint/teal accent
 COLORS = {
-    "bg":       "#0d0d0d",
-    "card":     "#1a1a1a",
-    "border":   "#2a2a2a",
-    "accent":   "#00e5ff",
-    "sold":     "#00e5ff",
-    "active":   "#ff6b6b",
-    "gold":     "#ffd700",
-    "text":     "#e0e0e0",
-    "muted":    "#888888",
+    "bg":       "#0a0c10",
+    "card":     "#14171c",
+    "card_alt": "#1c2128",
+    "border":   "#2d333b",
+    "accent":   "#14d991",   # jawa mint / brand-ish teal-green
+    "accent_2": "#2dd4bf",
+    "sold":     "#14d991",   # successful sale
+    "active":   "#f59e0b",   # amber: still on market
+    "gold":     "#fbbf24",
+    "danger":   "#f87171",
+    "text":     "#e6edf3",
+    "muted":    "#7d8590",
 }
+
+# Hardware brand colors (applied to GPU/CPU charts so the same brand is
+# always the same color across the dashboard).
+BRAND_COLORS = {
+    "nvidia": "#76b900",   # NVIDIA green
+    "amd":    "#ed1c24",   # AMD red
+    "intel":  "#0071c5",   # Intel blue
+    "other":  "#7d8590",
+}
+
+
+def part_brand(name: str | None) -> str:
+    """Return 'nvidia' / 'amd' / 'intel' / 'other' for a GPU or CPU string."""
+    if not name:
+        return "other"
+    s = str(name).upper()
+    if s.startswith(("RTX", "GTX")):
+        return "nvidia"
+    if s.startswith(("RX ", "RADEON", "RYZEN", "THREADRIPPER")):
+        return "amd"
+    if s.startswith(("ARC", "INTEL", "CORE ULTRA", "CORE ", "I3-", "I5-", "I7-", "I9-",
+                     "I3 ", "I5 ", "I7 ", "I9 ")):
+        return "intel"
+    return "other"
+
+
+def brand_color(name: str | None) -> str:
+    return BRAND_COLORS[part_brand(name)]
+
 
 FIG_LAYOUT = dict(
     template="plotly_dark",
     paper_bgcolor=COLORS["card"],
-    plot_bgcolor="#111111",
-    font_color=COLORS["text"],
-    margin=dict(l=10, r=10, t=40, b=10),
+    plot_bgcolor=COLORS["card"],
+    font=dict(color=COLORS["text"], family="Inter, -apple-system, Segoe UI, sans-serif", size=12),
+    margin=dict(l=10, r=10, t=46, b=10),
+    title_font=dict(size=15, color=COLORS["text"]),
+    title_x=0.02,
+    title_xanchor="left",
+    xaxis=dict(gridcolor=COLORS["border"], zerolinecolor=COLORS["border"]),
+    yaxis=dict(gridcolor=COLORS["border"], zerolinecolor=COLORS["border"]),
+    hoverlabel=dict(bgcolor=COLORS["card_alt"], bordercolor=COLORS["accent"],
+                    font=dict(color=COLORS["text"])),
 )
 
 PART_COSTS = {
@@ -180,34 +220,89 @@ def chart_card(fig, height=320):
     return dbc.Card(
         dcc.Graph(figure=fig, config=GRAPH_CONFIG,
                   style={"height": f"{height}px"}),
-        className="chart-card mb-3"
+        className="chart-card"
     )
+
+
+def kpi_card(label: str, value: str, color: str):
+    return dbc.Col(
+        dbc.Card(
+            dbc.CardBody([
+                html.Div(label, className="kpi-label"),
+                html.Div(value, className="kpi-value", style={"color": color}),
+            ]),
+            className="kpi-card",
+        ),
+        xs=6, md=4, lg=2,
+    )
+
+
+def brand_legend():
+    def swatch(label, color):
+        return html.Span([
+            html.Span(className="brand-dot",
+                      style={"backgroundColor": color}),
+            html.Span(label, className="brand-label"),
+        ], className="brand-chip")
+
+    return html.Div([
+        html.Span("Brand colors:", className="brand-legend-title"),
+        swatch("NVIDIA", BRAND_COLORS["nvidia"]),
+        swatch("AMD",    BRAND_COLORS["amd"]),
+        swatch("Intel",  BRAND_COLORS["intel"]),
+        html.Span("|", className="brand-sep"),
+        html.Span("Status:", className="brand-legend-title"),
+        swatch("Sold",   COLORS["sold"]),
+        swatch("Active", COLORS["active"]),
+    ], className="brand-legend mb-3")
 
 
 def make_trends_section(df: pd.DataFrame):
     sold   = df[df["status"] == "sold"]
     active = df[df["status"] == "active"]
 
-    # ── Row 1: Top 10 GPUs / CPUs ──────────────────────────────────────────
-    def top10_bar(col, color, title):
+    # ── Row 0: KPI strip ───────────────────────────────────────────────────
+    total = len(df)
+    sold_n = len(sold)
+    active_n = len(active)
+    avg_sold = sold["price"].dropna().mean() if not sold.empty else None
+    avg_active = active["price"].dropna().mean() if not active.empty else None
+    sell_through = (sold_n / total * 100) if total else 0
+
+    kpi_strip = dbc.Row([
+        kpi_card("Total Listings", f"{total:,}", COLORS["accent"]),
+        kpi_card("Sold", f"{sold_n:,}", COLORS["sold"]),
+        kpi_card("Active", f"{active_n:,}", COLORS["active"]),
+        kpi_card("Sell-Through", f"{sell_through:.0f}%", COLORS["gold"]),
+        kpi_card("Avg Sold Price",
+                 f"${avg_sold:,.0f}" if avg_sold else "—", COLORS["sold"]),
+        kpi_card("Avg Active Price",
+                 f"${avg_active:,.0f}" if avg_active else "—", COLORS["active"]),
+    ], className="g-3 mb-4")
+
+    # ── Row 1: Top 10 GPUs / CPUs (colored per brand) ──────────────────────
+    def top10_bar(col, title):
         if df.empty or col not in df.columns:
             return no_data_fig(title)
         counts = (df[col].dropna()
                          .value_counts()
                          .head(10)
                          .sort_values())
+        bar_colors = [brand_color(n) for n in counts.index]
         fig = go.Figure(go.Bar(
             x=counts.values, y=counts.index,
             orientation="h",
-            marker_color=color,
-            hovertemplate="%{y}: %{x} listings<extra></extra>",
+            marker=dict(color=bar_colors,
+                        line=dict(color=COLORS["border"], width=0)),
+            hovertemplate="<b>%{y}</b><br>%{x} listings<extra></extra>",
         ))
         fig.update_layout(**FIG_LAYOUT, title=title,
-                          xaxis_title="Listings", yaxis_title="")
+                          xaxis_title="Listings", yaxis_title="",
+                          bargap=0.25)
         return fig
 
-    gpu_fig = top10_bar("gpu", COLORS["accent"], "Top 10 GPUs by Listings")
-    cpu_fig = top10_bar("cpu", COLORS["active"],  "Top 10 CPUs by Listings")
+    gpu_fig = top10_bar("gpu", "Top 10 GPUs by Listings")
+    cpu_fig = top10_bar("cpu", "Top 10 CPUs by Listings")
 
     # ── Row 2: Combo chart + Price distribution ─────────────────────────────
     def combo_fig():
@@ -264,15 +359,17 @@ def make_trends_section(df: pd.DataFrame):
             return no_data_fig("Avg Sold Price by GPU")
         avg = (sold.dropna(subset=["gpu","price"])
                    .groupby("gpu")["price"].mean()
-                   .sort_values(ascending=False))
+                   .sort_values(ascending=True))
+        bar_colors = [brand_color(n) for n in avg.index]
         fig = go.Figure(go.Bar(
             x=avg.values, y=avg.index,
             orientation="h",
-            marker_color=COLORS["gold"],
-            hovertemplate="%{y}: $%{x:,.0f}<extra></extra>",
+            marker=dict(color=bar_colors),
+            hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
         ))
         fig.update_layout(**FIG_LAYOUT, title="Avg Sold Price by GPU",
-                          xaxis_title="Avg Price ($)", yaxis_title="")
+                          xaxis_title="Avg Price ($)", yaxis_title="",
+                          bargap=0.25)
         return fig
 
     def pie_fig():
@@ -315,21 +412,23 @@ def make_trends_section(df: pd.DataFrame):
         return fig
 
     return dbc.Container([
+        kpi_strip,
+        brand_legend(),
         dbc.Row([
             dbc.Col(chart_card(gpu_fig), md=6),
             dbc.Col(chart_card(cpu_fig), md=6),
-        ]),
+        ], className="g-3"),
         dbc.Row([
             dbc.Col(chart_card(combo_fig(), height=380), md=7),
             dbc.Col(chart_card(price_dist_fig()), md=5),
-        ]),
+        ], className="g-3"),
         dbc.Row([
             dbc.Col(chart_card(avg_price_fig(), height=380), md=8),
             dbc.Col(chart_card(pie_fig()), md=4),
-        ]),
+        ], className="g-3"),
         dbc.Row([
             dbc.Col(chart_card(price_range_fig(), height=300), md=12),
-        ]),
+        ], className="g-3"),
     ], fluid=True, className="px-0")
 
 
@@ -341,7 +440,7 @@ def make_lookup_section(df: pd.DataFrame):
     gpus = sorted(df["gpu"].dropna().unique().tolist()) if "gpu" in df.columns else []
     cpus = sorted(df["cpu"].dropna().unique().tolist()) if "cpu" in df.columns else []
 
-    dropdown_style = {"backgroundColor": "#1a1a1a", "color": COLORS["text"]}
+    dropdown_style = {"backgroundColor": COLORS["card"], "color": COLORS["text"]}
 
     controls = dbc.Card([
         dbc.CardBody([
@@ -551,14 +650,27 @@ def reco_card(r: dict, rank: int) -> dbc.Card:
     return dbc.Card([
         dbc.CardHeader(
             dbc.Row([
-                dbc.Col(html.Span(f"#{rank}  {r['combo']}",
-                                  style={"color": COLORS["accent"],
-                                         "fontWeight": "bold", "fontSize": "15px"}), width=10),
-                dbc.Col(dbc.Badge(f"{r['score']}/100", color="info",
-                                  style={"fontSize": "13px"}), width=2,
-                        className="text-end"),
+                dbc.Col([
+                    html.Span(f"#{rank}",
+                              style={"color": COLORS["muted"],
+                                     "fontWeight": "700", "fontSize": "13px",
+                                     "marginRight": "10px"}),
+                    html.Span(r["combo"],
+                              style={"color": COLORS["text"],
+                                     "fontWeight": "700", "fontSize": "15px"}),
+                ], width=10),
+                dbc.Col(html.Span(f"{r['score']}/100", style={
+                    "display": "inline-block",
+                    "padding": "4px 10px", "borderRadius": "999px",
+                    "backgroundColor": f"{COLORS['accent']}22",
+                    "color": COLORS["accent"],
+                    "border": f"1px solid {COLORS['accent']}55",
+                    "fontSize": "12px", "fontWeight": "700",
+                }), width=2, className="text-end"),
             ], align="center"),
-            style={"backgroundColor": "#1f1f1f", "borderBottom": f"1px solid {COLORS['border']}"}
+            style={"backgroundColor": COLORS["card_alt"],
+                   "borderBottom": f"1px solid {COLORS['border']}",
+                   "borderRadius": "12px 12px 0 0"}
         ),
         dbc.CardBody([
             dbc.Row([
@@ -579,8 +691,15 @@ def reco_card(r: dict, rank: int) -> dbc.Card:
                      f"{int(r['common_ram']) if r['common_ram'] else '?'}GB / "
                      f"{r['common_storage'] or '?'}"),
             ]),
-            dbc.Badge(r["tag"], color="info",
-                      style={"fontSize": "13px", "marginTop": "6px"}),
+            html.Span(r["tag"], style={
+                "display": "inline-block",
+                "padding": "5px 12px", "borderRadius": "999px",
+                "backgroundColor": f"{COLORS['accent']}1a",
+                "color": COLORS["accent"],
+                "border": f"1px solid {COLORS['accent']}44",
+                "fontSize": "12px", "fontWeight": "600",
+                "marginTop": "10px",
+            }),
         ]),
     ], className="reco-card")
 
@@ -590,7 +709,7 @@ def avoid_card(r: dict) -> dbc.Card:
         dbc.CardBody(
             dbc.Row([
                 dbc.Col(html.Span(r["combo"],
-                                  style={"color": "#ff6b6b", "fontWeight": "bold"}), md=6),
+                                  style={"color": COLORS["danger"], "fontWeight": "700"}), md=6),
                 dbc.Col([
                     html.Span(f"Score {r['score']}/100  · ",
                               style={"color": COLORS["muted"], "fontSize": "12px"}),
@@ -614,9 +733,10 @@ def make_recommendations_section(df: pd.DataFrame):
         f"📊 Based on {total_sold} sold listings analyzed, here are the builds "
         f"most likely to sell quickly at a good margin."
         if total_sold else "No sold listings available yet — run the scraper first.",
-        color="info",
-        style={"backgroundColor": "#0a2a35", "border": f"1px solid {COLORS['accent']}",
-               "color": COLORS["text"]},
+        style={"backgroundColor": COLORS["card"],
+               "border": f"1px solid {COLORS['border']}",
+               "borderLeft": f"3px solid {COLORS['accent']}",
+               "color": COLORS["text"], "borderRadius": "10px"},
         className="mb-4",
     )
 
@@ -639,9 +759,10 @@ def make_recommendations_section(df: pd.DataFrame):
     avoid_section = []
     if bottom:
         avoid_section = [
-            html.Hr(style={"borderColor": "#ff6b6b44", "marginTop": "30px"}),
+            html.Hr(style={"borderColor": COLORS["border"], "marginTop": "30px"}),
             html.H4("🚫 Builds to Avoid",
-                    style={"color": "#ff6b6b", "marginBottom": "16px"}),
+                    style={"color": COLORS["danger"], "marginBottom": "16px",
+                           "fontWeight": "700"}),
             html.P("These combos showed poor sell-through, heavy competition, or long days on market.",
                    style={"color": COLORS["muted"]}),
             *[avoid_card(r) for r in bottom],
@@ -674,56 +795,160 @@ app.index_string = """<!DOCTYPE html>
     <title>{%title%}</title>
     {%favicon%}
     {%css%}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-      body { background-color: #0d0d0d !important; color: #e0e0e0; }
-      .chart-card {
-        background-color: #1a1a1a !important;
-        border: 1px solid #2a2a2a !important;
-        border-radius: 8px;
-        padding: 10px;
+      :root {
+        --bg: #0a0c10;
+        --card: #14171c;
+        --card-alt: #1c2128;
+        --border: #2d333b;
+        --accent: #14d991;
+        --accent-2: #2dd4bf;
+        --sold: #14d991;
+        --active: #f59e0b;
+        --text: #e6edf3;
+        --muted: #7d8590;
       }
-      .stat-card {
-        background-color: #1a1a1a;
-        border: 1px solid #333;
-        border-radius: 8px;
-        padding: 16px;
+      html, body {
+        background-color: var(--bg) !important;
+        color: var(--text);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-feature-settings: "cv02", "cv11";
+        -webkit-font-smoothing: antialiased;
+      }
+      h1, h2, h3, h4, h5 { font-family: 'Inter', sans-serif; letter-spacing: -0.01em; }
+
+      /* ── Cards ──────────────────────────────────────────────────────── */
+      .chart-card {
+        background-color: var(--card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
+        padding: 6px;
+        transition: border-color 0.18s ease, transform 0.18s ease;
+      }
+      .chart-card:hover { border-color: #394149 !important; }
+
+      .kpi-card {
+        background: linear-gradient(145deg, var(--card) 0%, var(--card-alt) 100%) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
         text-align: center;
         height: 100%;
+        transition: transform 0.15s ease, border-color 0.15s ease;
       }
+      .kpi-card:hover { transform: translateY(-2px); border-color: var(--accent) !important; }
+      .kpi-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+      .kpi-value { font-size: 22px; font-weight: 700; line-height: 1.1; }
+
       .reco-card {
-        background-color: #1a1a1a !important;
-        border: 1px solid #00e5ff44 !important;
-        border-radius: 10px;
+        background-color: var(--card) !important;
+        border: 1px solid var(--border) !important;
+        border-left: 3px solid var(--accent) !important;
+        border-radius: 12px;
         margin-bottom: 14px;
+        transition: transform 0.18s ease, border-color 0.18s ease;
       }
+      .reco-card:hover { transform: translateY(-2px); }
       .avoid-card {
-        background-color: #1a1a1a !important;
-        border: 1px solid #ff6b6b44 !important;
-        border-radius: 8px;
+        background-color: var(--card) !important;
+        border: 1px solid var(--border) !important;
+        border-left: 3px solid #f87171 !important;
+        border-radius: 12px;
         margin-bottom: 10px;
       }
+
+      /* ── Headers ─────────────────────────────────────────────────────── */
       .section-header {
-        color: #00e5ff;
-        font-size: 1.4rem;
+        color: var(--text);
+        font-size: 1.35rem;
         font-weight: 700;
-        margin-bottom: 16px;
-        margin-top: 8px;
-        letter-spacing: 0.5px;
+        margin: 28px 0 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
-      .Select-control { background-color: #1a1a1a !important; }
+      .section-header::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 22px;
+        border-radius: 2px;
+        background: var(--accent);
+      }
+
+      /* ── Brand legend chips ──────────────────────────────────────────── */
+      .brand-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 14px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      .brand-legend-title {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .brand-chip { display: inline-flex; align-items: center; gap: 6px; }
+      .brand-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1px var(--border);
+      }
+      .brand-label { color: var(--text); font-size: 12px; font-weight: 500; }
+      .brand-sep { color: var(--border); margin: 0 4px; }
+
+      /* ── Form controls ───────────────────────────────────────────────── */
+      .Select-control, .Select-menu-outer, .VirtualizedSelectOption {
+        background-color: var(--card) !important;
+        border-color: var(--border) !important;
+      }
+      .Select-value-label, .Select-placeholder { color: var(--text) !important; }
+      .rc-slider-track { background-color: var(--accent) !important; }
+      .rc-slider-handle {
+        border-color: var(--accent) !important;
+        background-color: var(--card) !important;
+      }
+      .rc-slider-dot-active { border-color: var(--accent) !important; }
+
+      /* ── Data table ──────────────────────────────────────────────────── */
       .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td,
       .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
-        background-color: #1a1a1a !important;
-        color: #e0e0e0 !important;
-        border-color: #333 !important;
+        background-color: var(--card) !important;
+        color: var(--text) !important;
+        border-color: var(--border) !important;
       }
-      .rc-slider-track { background-color: #00e5ff !important; }
-      .rc-slider-handle { border-color: #00e5ff !important; }
-      /* Modebar dark theme */
-      .modebar { background: #1a1a1a !important; border: 1px solid #2a2a2a !important; border-radius: 6px !important; }
-      .modebar-btn path { fill: #888 !important; }
-      .modebar-btn:hover path { fill: #00e5ff !important; }
-      .modebar-btn.active path { fill: #00e5ff !important; }
+
+      /* ── Plotly modebar ──────────────────────────────────────────────── */
+      .modebar {
+        background: var(--card) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 6px !important;
+      }
+      .modebar-btn path { fill: var(--muted) !important; }
+      .modebar-btn:hover path, .modebar-btn.active path { fill: var(--accent) !important; }
+
+      /* ── Scrollbar ───────────────────────────────────────────────────── */
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: var(--bg); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3d444c; }
     </style>
   </head>
   <body>
@@ -748,13 +973,30 @@ _df = load_data()
 
 def header():
     return html.Div([
-        html.H1("Jawa.gg PC Market Trends",
-                style={"color": COLORS["accent"], "fontWeight": "900",
-                       "fontSize": "2rem", "marginBottom": "4px"}),
-        html.P("AstroLabPCs Research Dashboard",
-               style={"color": COLORS["muted"], "fontSize": "1rem",
-                      "marginBottom": "0"}),
-        html.Hr(style={"borderColor": "#333", "marginTop": "12px"}),
+        html.Div([
+            html.Span("J", style={
+                "display": "inline-flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "width": "40px", "height": "40px",
+                "borderRadius": "10px",
+                "background": f"linear-gradient(135deg, {COLORS['accent']} 0%, {COLORS['accent_2']} 100%)",
+                "color": "#0a0c10",
+                "fontWeight": "900", "fontSize": "22px",
+                "marginRight": "14px",
+            }),
+            html.Div([
+                html.H1("Jawa.gg PC Market Trends",
+                        style={"color": COLORS["text"], "fontWeight": "800",
+                               "fontSize": "1.8rem", "marginBottom": "2px",
+                               "letterSpacing": "-0.02em"}),
+                html.P("AstroLabPCs Research Dashboard",
+                       style={"color": COLORS["muted"], "fontSize": "0.9rem",
+                              "marginBottom": "0", "letterSpacing": "0.02em"}),
+            ]),
+        ], style={"display": "flex", "alignItems": "center"}),
+        html.Div(style={"height": "1px", "background": COLORS["border"],
+                        "marginTop": "18px"}),
     ])
 
 
@@ -771,12 +1013,12 @@ app.layout = dbc.Container(
         section_title("📊", "Section 1 — Market Trends"),
         make_trends_section(_df),
 
-        html.Hr(style={"borderColor": "#333", "margin": "30px 0"}),
+        html.Hr(style={"borderColor": COLORS["border"], "margin": "30px 0"}),
 
         section_title("🔍", "Section 2 — Spec Lookup Tool"),
         make_lookup_section(_df),
 
-        html.Hr(style={"borderColor": "#333", "margin": "30px 0"}),
+        html.Hr(style={"borderColor": COLORS["border"], "margin": "30px 0"}),
 
         section_title("🤖", "Section 3 — What Should I Build Next?"),
         make_recommendations_section(_df),
@@ -843,12 +1085,12 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
 
     if avg_sold and avg_active:
         diff      = avg_active - avg_sold
-        diff_color = "#ff6b6b" if diff > 0 else "#00e5ff"
+        diff_color = COLORS["danger"] if diff > 0 else COLORS["accent"]
         diff_str  = f"+${diff:,.0f}" if diff > 0 else f"-${abs(diff):,.0f}"
         diff_note = "above" if diff > 0 else "below"
         diff_display = html.Span(
             f"{diff_str} ({diff_note} recent sold avg)",
-            style={"color": diff_color, "fontWeight": "bold"}
+            style={"color": diff_color, "fontWeight": "700"}
         )
     else:
         diff_display = html.Span("N/A", style={"color": COLORS["muted"]})
@@ -856,12 +1098,10 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
     def stat_card(label, value, color=COLORS["accent"]):
         return dbc.Col(dbc.Card(
             dbc.CardBody([
-                html.Div(label, style={"color": COLORS["muted"], "fontSize": "12px",
-                                       "textTransform": "uppercase"}),
-                html.Div(value, style={"color": color, "fontWeight": "bold",
-                                       "fontSize": "22px", "marginTop": "4px"}),
+                html.Div(label, className="kpi-label"),
+                html.Div(value, className="kpi-value", style={"color": color}),
             ]),
-            className="chart-card"
+            className="kpi-card"
         ), xs=6, md=3, className="mb-3")
 
     stats_row = dbc.Row([
@@ -870,10 +1110,10 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
         stat_card("Avg Active Price",
                   f"${avg_active:,.0f}" if avg_active else "N/A", COLORS["active"]),
         stat_card("Price Difference", diff_display),
-        stat_card(f"Matched Listings",
+        stat_card("Matched Listings",
                   f"{len(sold_rows)} sold · {len(active_rows)} active",
                   COLORS["gold"]),
-    ])
+    ], className="g-3")
 
     # Table
     display_cols = ["title", "price", "status", "gpu", "cpu", "ram_gb", "storage", "url"]
@@ -893,21 +1133,23 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
         ],
         style_table={"overflowX": "auto"},
         style_header={
-            "backgroundColor": "#111", "color": COLORS["accent"],
-            "fontWeight": "bold", "border": "1px solid #333",
+            "backgroundColor": COLORS["card_alt"], "color": COLORS["accent"],
+            "fontWeight": "700", "border": f"1px solid {COLORS['border']}",
+            "textTransform": "uppercase", "letterSpacing": "0.06em",
+            "fontSize": "11px",
         },
         style_cell={
-            "backgroundColor": "#1a1a1a", "color": COLORS["text"],
-            "border": "1px solid #2a2a2a", "padding": "8px",
+            "backgroundColor": COLORS["card"], "color": COLORS["text"],
+            "border": f"1px solid {COLORS['border']}", "padding": "10px",
             "maxWidth": "300px", "overflow": "hidden",
-            "textOverflow": "ellipsis",
+            "textOverflow": "ellipsis", "fontFamily": "Inter, sans-serif",
         },
         style_data_conditional=[
             {"if": {"filter_query": '{status} = "sold"'},
              "color": COLORS["sold"]},
             {"if": {"filter_query": '{status} = "active"'},
              "color": COLORS["active"]},
-            {"if": {"row_index": "odd"}, "backgroundColor": "#161616"},
+            {"if": {"row_index": "odd"}, "backgroundColor": COLORS["card_alt"]},
         ],
         page_size=20,
         sort_action="native",
@@ -922,9 +1164,10 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
 
     if matched.empty:
         return dbc.Alert(
-            "No listings match the selected filters.", color="secondary",
-            style={"backgroundColor": "#1a1a1a", "border": "1px solid #333",
-                   "color": COLORS["muted"]}
+            "No listings match the selected filters.",
+            style={"backgroundColor": COLORS["card"],
+                   "border": f"1px solid {COLORS['border']}",
+                   "color": COLORS["muted"], "borderRadius": "10px"}
         )
 
     return html.Div([
