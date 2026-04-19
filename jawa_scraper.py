@@ -21,7 +21,7 @@ import random
 import re
 import sys
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from playwright.async_api import async_playwright, Page, BrowserContext
@@ -84,6 +84,33 @@ def parse_price(text: str) -> float | None:
         return None
 
 
+_REL_DATE_RE = re.compile(
+    r"(\d+)\s*(second|minute|hour|day|week|month|year)s?\s*ago",
+    re.IGNORECASE,
+)
+_REL_UNIT_DAYS = {
+    "second": 1 / 86400, "minute": 1 / 1440, "hour": 1 / 24,
+    "day": 1, "week": 7, "month": 30, "year": 365,
+}
+
+
+def _relative_to_iso(text: str) -> str | None:
+    """Convert '5 days ago', '2 weeks ago', 'just now' to an ISO date."""
+    if not text:
+        return None
+    if re.search(r"just now|moments? ago|today", text, re.IGNORECASE):
+        return datetime.now(timezone.utc).date().isoformat()
+    if re.search(r"yesterday", text, re.IGNORECASE):
+        return (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+    m = _REL_DATE_RE.search(text)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2).lower()
+        days = n * _REL_UNIT_DAYS[unit]
+        return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    return None
+
+
 def parse_date(text: str | None) -> str | None:
     """Try to turn a messy date string into ISO-8601 (date only), or None."""
     if not text:
@@ -92,6 +119,10 @@ def parse_date(text: str | None) -> str | None:
     # Already looks like a date
     if re.match(r"\d{4}-\d{2}-\d{2}", text):
         return text[:10]
+    # Relative dates -> absolute ISO
+    rel = _relative_to_iso(text)
+    if rel:
+        return rel
     # Month DD, YYYY  /  DD Month YYYY
     for fmt in ("%B %d, %Y", "%b %d, %Y", "%d %B %Y", "%d %b %Y",
                 "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d"):
@@ -99,10 +130,42 @@ def parse_date(text: str | None) -> str | None:
             return datetime.strptime(text, fmt).date().isoformat()
         except ValueError:
             pass
-    # Relative like "2 days ago", "just now" — leave as-is
-    if re.search(r"\bago\b|just now", text, re.IGNORECASE):
-        return text
     return text or None
+
+
+# Labelled-date patterns: capture the date portion that follows a keyword.
+# Covers: "Sold Mar 5, 2024", "Sold on 03/05/2024", "Sold 5 days ago",
+# "Listed 2 weeks ago", "Posted yesterday", etc.
+_DATE_TAIL = (
+    r"(?:on\s+)?"
+    r"("
+    r"\d+\s*(?:second|minute|hour|day|week|month|year)s?\s*ago"
+    r"|just now|moments? ago|yesterday|today"
+    r"|\d{4}-\d{2}-\d{2}"
+    r"|\d{1,2}/\d{1,2}/\d{2,4}"
+    r"|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4}"
+    r"|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4}"
+    r")"
+)
+_SOLD_DATE_RE = re.compile(r"sold\s+" + _DATE_TAIL, re.IGNORECASE)
+_LISTED_DATE_RE = re.compile(r"(?:listed|posted)\s+" + _DATE_TAIL, re.IGNORECASE)
+
+
+def extract_labelled_dates(text: str) -> tuple[str | None, str | None]:
+    """Search free-form text for 'Sold ...' and 'Listed/Posted ...' dates.
+
+    Returns (date_sold, date_listed) as ISO strings when parseable.
+    """
+    if not text:
+        return None, None
+    sold = listed = None
+    m = _SOLD_DATE_RE.search(text)
+    if m:
+        sold = parse_date(m.group(1))
+    m = _LISTED_DATE_RE.search(text)
+    if m:
+        listed = parse_date(m.group(1))
+    return sold, listed
 
 
 def now_iso() -> str:
@@ -353,8 +416,14 @@ async def extract_from_card(card, base_url: str, status: str) -> dict:
                 result["price"] = parse_price(m.group(1))
 
     # --- Dates ---
-    # <a> cards don't expose date elements; deep_scrape_listing will handle them.
-    if not is_anchor:
+    if is_anchor:
+        # <a> cards embed all text including "Sold 5 days ago" / "Listed 2 weeks ago"
+        ds, dl = extract_labelled_dates(anchor_text)
+        if ds and status == "sold":
+            result["date_sold"] = ds
+        if dl:
+            result["date_listed"] = dl
+    else:
         for sel in DATE_SELECTORS:
             loc = card.locator(sel)
             count = await loc.count()
@@ -456,7 +525,20 @@ async def deep_scrape_listing(page: Page, url: str, status: str) -> dict:
                         result["price"] = parse_price(m.group(1))
                         break
 
-        # Dates — look in the main content only
+        # Dates — 1) search labelled text ("Sold 5 days ago", "Listed Mar 5, 2024")
+        #         in the main content block first (most reliable on jawa.gg)
+        for container_sel in ["main", "article", "[class*='product']", "body"]:
+            container_text = await _text(page.locator(container_sel).first)
+            if container_text:
+                ds, dl = extract_labelled_dates(container_text)
+                if ds and status == "sold" and not result["date_sold"]:
+                    result["date_sold"] = ds
+                if dl and not result["date_listed"]:
+                    result["date_listed"] = dl
+                if result["date_sold"] or result["date_listed"]:
+                    break
+
+        # 2) Fall back to DOM date/time elements
         for sel in DATE_SELECTORS:
             loc = page.locator(sel)
             count = await loc.count()
