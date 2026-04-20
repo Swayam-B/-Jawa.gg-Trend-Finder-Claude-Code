@@ -47,6 +47,51 @@ BRAND_COLORS = {
 }
 
 
+def gpu_generation(name: str | None) -> str | None:
+    """Return a generation label like 'RTX 40 series' for a canonical GPU name."""
+    if not name:
+        return None
+    n = str(name)
+    checks = [
+        (r"RTX\s*5\d{3}", "RTX 50 series"),
+        (r"RTX\s*4\d{3}", "RTX 40 series"),
+        (r"RTX\s*3\d{3}", "RTX 30 series"),
+        (r"RTX\s*2\d{3}", "RTX 20 series"),
+        (r"GTX\s*1[6-9]\d{2}", "GTX 16 series"),
+        (r"GTX\s*1[0-5]\d{2}", "GTX 10 series"),
+        (r"RX\s*9\d{3}", "RX 9000 series"),
+        (r"RX\s*7\d{3}", "RX 7000 series"),
+        (r"RX\s*6\d{3}", "RX 6000 series"),
+        (r"RX\s*5[5-9]\d{2}", "RX 5000 series"),
+        (r"RX\s*5\d{2}\b", "RX 500 series"),
+        (r"RX\s*4\d{2}\b", "RX 400 series"),
+        (r"Arc", "Intel Arc"),
+    ]
+    for pattern, label in checks:
+        if re.search(pattern, n, re.I):
+            return label
+    return None
+
+
+def cpu_socket(name: str | None) -> str | None:
+    """Return socket label like 'AM5' or 'LGA1700' for a canonical CPU name."""
+    if not name:
+        return None
+    n = str(name)
+    if re.search(r"Core Ultra", n, re.I):
+        return "LGA1851"
+    m = re.search(r"Ryzen\s+\d+\s+(\d)\d{3}", n, re.I)
+    if m:
+        return "AM5" if int(m.group(1)) >= 7 else "AM4"
+    m = re.search(r"i[3579][-\s](\d{4,5})", n, re.I)
+    if m:
+        num = int(re.sub(r"\D", "", m.group(1)))
+        if num >= 12000: return "LGA1700"
+        if num >= 10000: return "LGA1200"
+        return "LGA1151"
+    return None
+
+
 def part_brand(name: str | None) -> str:
     """Return 'nvidia' / 'amd' / 'intel' / 'other' for a GPU or CPU string."""
     if not name:
@@ -212,7 +257,7 @@ GRAPH_CONFIG = {
     ],
     "displaylogo": False,
     "doubleClick": "reset+autosize",
-    "scrollZoom": True,
+    "scrollZoom": False,
 }
 
 
@@ -340,55 +385,95 @@ def make_trends_section(df: pd.DataFrame):
             ("active", COLORS["active"], "Active"),
         ]:
             prices = df[df["status"] == status]["price"].dropna()
+            prices = prices[prices <= 5000]
             if not prices.empty:
                 fig.add_trace(go.Histogram(
                     x=prices, name=label,
                     marker_color=color, opacity=0.7,
-                    xbins=dict(size=100),
-                    hovertemplate="$%{x}: %{y} listings<extra></extra>",
+                    xbins=dict(start=0, end=5000, size=100),
+                    hovertemplate="$%{x}–%{x}: %{y} listings<extra></extra>",
                 ))
         fig.update_layout(**FIG_LAYOUT, barmode="overlay",
-                          title="Price Distribution ($100 bins)",
-                          xaxis_title="Price ($)", yaxis_title="Count",
+                          title="Price Distribution ($100 bins, $0–$5k)",
+                          xaxis_range=[0, 5000], xaxis_title="Price ($)",
+                          yaxis_title="Count",
                           legend=dict(orientation="h", y=1.02))
         return fig
 
-    # ── Row 3: Avg price by GPU + Sold vs Active pie ───────────────────────
-    def avg_price_fig():
-        if sold.empty or "gpu" not in sold.columns:
-            return no_data_fig("Avg Sold Price by GPU")
-        avg = (sold.dropna(subset=["gpu","price"])
-                   .groupby("gpu")["price"].mean()
-                   .sort_values(ascending=True))
-        bar_colors = [brand_color(n) for n in avg.index]
-        fig = go.Figure(go.Bar(
-            x=avg.values, y=avg.index,
-            orientation="h",
-            marker=dict(color=bar_colors),
-            hovertemplate="<b>%{y}</b><br>$%{x:,.0f}<extra></extra>",
-        ))
-        fig.update_layout(**FIG_LAYOUT, title="Avg Sold Price by GPU",
-                          xaxis_title="Avg Price ($)", yaxis_title="",
-                          bargap=0.25)
+    # ── Row 3: White vs Black builds | GPU brand sell-through | CPU brand sell-through ──
+    def color_comparison_fig():
+        if df.empty or "color" not in df.columns:
+            return no_data_fig("White vs Black Builds")
+        col_df = df[df["color"].isin(["White", "Black", "Mixed"])].copy()
+        if col_df.empty:
+            return no_data_fig("White vs Black Builds (no color data yet)")
+        COLOR_SWATCHES = {"White": "#e6edf3", "Black": COLORS["muted"], "Mixed": COLORS["accent_2"]}
+        fig = go.Figure()
+        for status, sc in [("sold", COLORS["sold"]), ("active", COLORS["active"])]:
+            sub = col_df[col_df["status"] == status]
+            counts = sub["color"].value_counts().reindex(["White", "Black", "Mixed"], fill_value=0)
+            fig.add_trace(go.Bar(
+                name=status.capitalize(), x=counts.index, y=counts.values,
+                marker_color=sc,
+                hovertemplate="<b>%{x}</b><br>" + status.capitalize() + ": %{y}<extra></extra>",
+            ))
+        # Sell-through % annotation per color
+        annotations = []
+        for color in ["White", "Black", "Mixed"]:
+            grp = col_df[col_df["color"] == color]
+            if len(grp):
+                st = grp["status"].value_counts()
+                pct = int(st.get("sold", 0) / len(grp) * 100)
+                annotations.append(dict(
+                    x=color, y=len(grp) + 0.5,
+                    text=f"{pct}% sold", showarrow=False,
+                    font=dict(color=COLORS["muted"], size=11),
+                ))
+        fig.update_layout(**FIG_LAYOUT, barmode="stack",
+                          title="White vs Black Build Volume",
+                          xaxis_title="Build Color", yaxis_title="Listings",
+                          legend=dict(orientation="h", y=1.02),
+                          annotations=annotations)
         return fig
 
-    def pie_fig():
-        if df.empty:
-            return no_data_fig("Sold vs Active")
-        counts = df["status"].value_counts()
-        fig = go.Figure(go.Pie(
-            labels=counts.index.str.capitalize(),
-            values=counts.values,
-            hole=0.5,
-            marker_colors=[COLORS["sold"], COLORS["active"]],
-            hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
+    def brand_sellthrough_fig(col, title):
+        """Sell-through % per brand for gpu or cpu column."""
+        if df.empty or col not in df.columns:
+            return no_data_fig(title)
+        tmp = df.dropna(subset=[col]).copy()
+        tmp["brand"] = tmp[col].apply(part_brand)
+        brands = tmp["brand"].value_counts()
+        # Only keep brands with meaningful data
+        valid = brands[brands >= 3].index.tolist()
+        tmp = tmp[tmp["brand"].isin(valid)]
+        if tmp.empty:
+            return no_data_fig(title)
+        grp = tmp.groupby("brand").apply(
+            lambda g: pd.Series({
+                "total": len(g),
+                "sold": (g["status"] == "sold").sum(),
+            })
+        ).reset_index()
+        grp["sell_through"] = grp["sold"] / grp["total"] * 100
+        grp = grp.sort_values("sell_through", ascending=True)
+        bar_colors = [BRAND_COLORS.get(b, COLORS["muted"]) for b in grp["brand"]]
+        fig = go.Figure(go.Bar(
+            x=grp["sell_through"], y=grp["brand"].str.capitalize(),
+            orientation="h",
+            marker=dict(color=bar_colors),
+            text=[f"{v:.0f}%" for v in grp["sell_through"]],
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>Sell-through: %{x:.1f}%<br>"
+                          "Sold: %{customdata[0]} / %{customdata[1]}<extra></extra>",
+            customdata=grp[["sold", "total"]].values,
         ))
-        fig.update_layout(**FIG_LAYOUT, title="Sold vs Active Ratio",
-                          legend=dict(orientation="h", y=-0.1))
+        fig.update_layout(**FIG_LAYOUT, title=title,
+                          xaxis_range=[0, 110], xaxis_title="Sell-Through %",
+                          yaxis_title="", bargap=0.3)
         return fig
 
     # ── Row 4: Price range breakdown ───────────────────────────────────────
-    def price_range_fig():
+    def price_range_fig():  # noqa: E302
         if df.empty:
             return no_data_fig("Price Range Breakdown")
         labels  = ["<$500", "$500–$800", "$800–$1,200", "$1,200+"]
@@ -419,12 +504,13 @@ def make_trends_section(df: pd.DataFrame):
             dbc.Col(chart_card(cpu_fig), md=6),
         ], className="g-3"),
         dbc.Row([
-            dbc.Col(chart_card(combo_fig(), height=380), md=7),
+            dbc.Col(chart_card(combo_fig(), height=400), md=7),
             dbc.Col(chart_card(price_dist_fig()), md=5),
         ], className="g-3"),
         dbc.Row([
-            dbc.Col(chart_card(avg_price_fig(), height=380), md=8),
-            dbc.Col(chart_card(pie_fig()), md=4),
+            dbc.Col(chart_card(color_comparison_fig(), height=280), md=4),
+            dbc.Col(chart_card(brand_sellthrough_fig("gpu", "GPU Brand Sell-Through %"), height=280), md=4),
+            dbc.Col(chart_card(brand_sellthrough_fig("cpu", "CPU Brand Sell-Through %"), height=280), md=4),
         ], className="g-3"),
         dbc.Row([
             dbc.Col(chart_card(price_range_fig(), height=300), md=12),
@@ -436,84 +522,130 @@ def make_trends_section(df: pd.DataFrame):
 # Section 2 — Spec Lookup Tool
 # ---------------------------------------------------------------------------
 
+def _label(text):
+    return html.Label(text, style={"color": COLORS["accent"], "fontWeight": "600",
+                                   "fontSize": "11px", "textTransform": "uppercase",
+                                   "letterSpacing": "0.06em", "marginBottom": "4px"})
+
+
 def make_lookup_section(df: pd.DataFrame):
     gpus = sorted(df["gpu"].dropna().unique().tolist()) if "gpu" in df.columns else []
     cpus = sorted(df["cpu"].dropna().unique().tolist()) if "cpu" in df.columns else []
-
-    dropdown_style = {"backgroundColor": COLORS["card"], "color": COLORS["text"]}
+    dd = {"backgroundColor": COLORS["card"], "color": COLORS["text"]}
 
     controls = dbc.Card([
         dbc.CardBody([
+            # ── Row 1: specific part filters ──────────────────────────────
             dbc.Row([
                 dbc.Col([
-                    html.Label("GPU", style={"color": COLORS["accent"], "fontWeight": "bold"}),
-                    dcc.Dropdown(
-                        id="gpu-filter",
-                        options=[{"label": "Any", "value": "Any"}] +
-                                [{"label": g, "value": g} for g in gpus],
-                        value="Any", clearable=False,
-                        style=dropdown_style,
-                    ),
+                    _label("GPU"),
+                    dcc.Dropdown(id="gpu-filter",
+                                 options=[{"label": "Any", "value": "Any"}] +
+                                         [{"label": g, "value": g} for g in gpus],
+                                 value="Any", clearable=False, style=dd),
                 ], md=3),
                 dbc.Col([
-                    html.Label("CPU", style={"color": COLORS["accent"], "fontWeight": "bold"}),
-                    dcc.Dropdown(
-                        id="cpu-filter",
-                        options=[{"label": "Any", "value": "Any"}] +
-                                [{"label": c, "value": c} for c in cpus],
-                        value="Any", clearable=False,
-                        style=dropdown_style,
-                    ),
+                    _label("CPU"),
+                    dcc.Dropdown(id="cpu-filter",
+                                 options=[{"label": "Any", "value": "Any"}] +
+                                         [{"label": c, "value": c} for c in cpus],
+                                 value="Any", clearable=False, style=dd),
                 ], md=3),
                 dbc.Col([
-                    html.Label("RAM", style={"color": COLORS["accent"], "fontWeight": "bold"}),
-                    dcc.Dropdown(
-                        id="ram-filter",
-                        options=[{"label": "Any", "value": "Any"},
-                                 {"label": "8 GB",  "value": "8"},
-                                 {"label": "16 GB", "value": "16"},
-                                 {"label": "32 GB", "value": "32"},
-                                 {"label": "64 GB", "value": "64"}],
-                        value="Any", clearable=False,
-                        style=dropdown_style,
-                    ),
+                    _label("RAM"),
+                    dcc.Dropdown(id="ram-filter",
+                                 options=[{"label": "Any", "value": "Any"},
+                                          {"label": "8 GB",  "value": "8"},
+                                          {"label": "16 GB", "value": "16"},
+                                          {"label": "32 GB", "value": "32"},
+                                          {"label": "64 GB", "value": "64"}],
+                                 value="Any", clearable=False, style=dd),
                 ], md=2),
                 dbc.Col([
-                    html.Label("Storage", style={"color": COLORS["accent"], "fontWeight": "bold"}),
-                    dcc.Dropdown(
-                        id="storage-filter",
-                        options=[
-                            {"label": "Any",        "value": "Any"},
-                            {"label": "500GB SSD",  "value": "500GB SSD"},
-                            {"label": "512GB SSD",  "value": "512GB SSD"},
-                            {"label": "1TB SSD",    "value": "1TB SSD"},
-                            {"label": "1TB NVMe",   "value": "1TB NVMe"},
-                            {"label": "2TB SSD",    "value": "2TB SSD"},
-                            {"label": "2TB NVMe",   "value": "2TB NVMe"},
-                            {"label": "2TB HDD",    "value": "2TB HDD"},
-                        ],
-                        value="Any", clearable=False,
-                        style=dropdown_style,
-                    ),
+                    _label("Storage"),
+                    dcc.Dropdown(id="storage-filter",
+                                 options=[
+                                     {"label": "Any",        "value": "Any"},
+                                     {"label": "500GB SSD",  "value": "500GB SSD"},
+                                     {"label": "512GB SSD",  "value": "512GB SSD"},
+                                     {"label": "1TB SSD",    "value": "1TB SSD"},
+                                     {"label": "1TB NVMe",   "value": "1TB NVMe"},
+                                     {"label": "2TB SSD",    "value": "2TB SSD"},
+                                     {"label": "2TB NVMe",   "value": "2TB NVMe"},
+                                     {"label": "2TB HDD",    "value": "2TB HDD"},
+                                 ],
+                                 value="Any", clearable=False, style=dd),
                 ], md=2),
                 dbc.Col([
-                    html.Label("Time Range (sold)",
-                               style={"color": COLORS["accent"], "fontWeight": "bold"}),
-                    dcc.Slider(
-                        id="time-slider", min=0, max=90,
-                        step=None, value=30,
-                        marks={0: "All", 7: "7d", 14: "14d",
-                               30: "30d", 60: "60d", 90: "90d"},
-                    ),
-                ], md=2, className="pt-1"),
-            ]),
+                    _label("Build Color"),
+                    dcc.Dropdown(id="color-filter",
+                                 options=[
+                                     {"label": "Any",    "value": "Any"},
+                                     {"label": "White",  "value": "White"},
+                                     {"label": "Black",  "value": "Black"},
+                                     {"label": "Mixed",  "value": "Mixed"},
+                                     {"label": "Pink",   "value": "Pink"},
+                                     {"label": "Purple", "value": "Purple"},
+                                     {"label": "Red",    "value": "Red"},
+                                     {"label": "Blue",   "value": "Blue"},
+                                     {"label": "Gray",   "value": "Gray"},
+                                     {"label": "Silver", "value": "Silver"},
+                                 ],
+                                 value="Any", clearable=False, style=dd),
+                ], md=2),
+            ], className="g-3 mb-3"),
+            # ── Row 2: generation / socket / time filters ─────────────────
             dbc.Row([
+                dbc.Col([
+                    _label("GPU Generation"),
+                    dcc.Dropdown(id="gpu-gen-filter",
+                                 options=[
+                                     {"label": "Any",             "value": "Any"},
+                                     {"label": "RTX 50 series",   "value": "RTX 50 series"},
+                                     {"label": "RTX 40 series",   "value": "RTX 40 series"},
+                                     {"label": "RTX 30 series",   "value": "RTX 30 series"},
+                                     {"label": "RTX 20 series",   "value": "RTX 20 series"},
+                                     {"label": "GTX 16 series",   "value": "GTX 16 series"},
+                                     {"label": "GTX 10 series",   "value": "GTX 10 series"},
+                                     {"label": "RX 9000 series",  "value": "RX 9000 series"},
+                                     {"label": "RX 7000 series",  "value": "RX 7000 series"},
+                                     {"label": "RX 6000 series",  "value": "RX 6000 series"},
+                                     {"label": "RX 5000 series",  "value": "RX 5000 series"},
+                                     {"label": "RX 500 series",   "value": "RX 500 series"},
+                                     {"label": "Intel Arc",       "value": "Intel Arc"},
+                                 ],
+                                 value="Any", clearable=False, style=dd),
+                ], md=3),
+                dbc.Col([
+                    _label("CPU Socket"),
+                    dcc.Dropdown(id="socket-filter",
+                                 options=[
+                                     {"label": "Any",      "value": "Any"},
+                                     {"label": "AM5",      "value": "AM5"},
+                                     {"label": "AM4",      "value": "AM4"},
+                                     {"label": "LGA1851",  "value": "LGA1851"},
+                                     {"label": "LGA1700",  "value": "LGA1700"},
+                                     {"label": "LGA1200",  "value": "LGA1200"},
+                                     {"label": "LGA1151",  "value": "LGA1151"},
+                                 ],
+                                 value="Any", clearable=False, style=dd),
+                ], md=3),
+                dbc.Col([
+                    _label("Time Range (sold)"),
+                    dcc.Slider(id="time-slider", min=0, max=90, step=None, value=30,
+                               marks={0: "All", 7: "7d", 14: "14d",
+                                      30: "30d", 60: "60d", 90: "90d"}),
+                ], md=4, className="pt-1"),
                 dbc.Col(
-                    dbc.Button("🔍 Search", id="search-btn", color="info",
-                               className="mt-3 px-4"),
-                    width="auto"
+                    dbc.Button("🔍 Search", id="search-btn",
+                               style={"backgroundColor": COLORS["accent"],
+                                      "border": "none", "color": "#0a0c10",
+                                      "fontWeight": "700", "marginTop": "22px",
+                                      "width": "100%"},
+                               className="px-4"),
+                    md=2,
                 ),
-            ]),
+            ], className="g-3"),
         ])
     ], className="chart-card mb-3")
 
@@ -1039,10 +1171,14 @@ app.layout = dbc.Container(
     State("cpu-filter", "value"),
     State("ram-filter", "value"),
     State("storage-filter", "value"),
+    State("color-filter", "value"),
+    State("gpu-gen-filter", "value"),
+    State("socket-filter", "value"),
     State("time-slider", "value"),
     prevent_initial_call=True,
 )
-def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
+def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel,
+               color_sel, gpu_gen_sel, socket_sel, days):
     df = load_data()
     if df.empty:
         return dbc.Alert("No data found. Make sure jawa_listings.csv exists.",
@@ -1066,6 +1202,15 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
         mask &= df["storage"].str.contains(
             re.escape(storage_sel), case=False, na=False
         )
+
+    if color_sel and color_sel != "Any" and "color" in df.columns:
+        mask &= df["color"].str.lower() == color_sel.lower()
+
+    if gpu_gen_sel and gpu_gen_sel != "Any":
+        mask &= df["gpu"].apply(gpu_generation) == gpu_gen_sel
+
+    if socket_sel and socket_sel != "Any":
+        mask &= df["cpu"].apply(cpu_socket) == socket_sel
 
     matched = df[mask].copy()
 
@@ -1116,7 +1261,7 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel, days):
     ], className="g-3")
 
     # Table
-    display_cols = ["title", "price", "status", "gpu", "cpu", "ram_gb", "storage", "url"]
+    display_cols = ["title", "price", "status", "gpu", "cpu", "ram_gb", "storage", "color", "url"]
     table_df = matched[
         [c for c in display_cols if c in matched.columns]
     ].head(100).copy()
