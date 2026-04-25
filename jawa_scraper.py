@@ -842,13 +842,63 @@ async def scrape_section(
 # CSV output
 # ---------------------------------------------------------------------------
 
+def load_existing_csv(path: Path) -> dict[str, dict]:
+    """Load existing CSV into a dict keyed by URL. Returns {} if file missing."""
+    if not path.exists():
+        return {}
+    rows = {}
+    try:
+        with path.open(newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                url = row.get("url", "").strip()
+                if url:
+                    rows[url] = row
+    except Exception as e:
+        print(f"[warn] Could not read existing CSV: {e}")
+    return rows
+
+
+def merge_listings(existing: dict[str, dict], fresh: list[dict]) -> list[dict]:
+    """Merge fresh scrape into existing data.
+
+    Rules:
+    - Fresh listings always overwrite existing entries with the same URL
+      (price, status, specs may have changed).
+    - Existing entries not seen in the fresh scrape are kept only if their
+      status is 'sold' — these are historical records that may have aged
+      off the site.
+    - Active listings not seen in the fresh scrape are dropped (they were
+      likely relisted, deleted, or sold and not captured this run).
+    """
+    merged: dict[str, dict] = {}
+
+    # Preserve historical sold records from previous runs
+    for url, row in existing.items():
+        if (row.get("status") or "").lower() == "sold":
+            merged[url] = row
+
+    # Fresh data wins — overwrites historical if URL matches
+    for lst in fresh:
+        url = lst.get("url", "").strip()
+        if url:
+            merged[url] = lst
+
+    # Return sorted: active first, then sold (newest scraped first)
+    result = list(merged.values())
+    result.sort(key=lambda r: (
+        0 if r.get("status") == "active" else 1,
+        r.get("date_scraped") or "",
+    ), reverse=False)
+    return result
+
+
 def save_csv(listings: list[dict], path: Path) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for row in listings:
             writer.writerow({k: row.get(k, "") for k in CSV_FIELDS})
-    print(f"\nSaved {len(listings)} listings to {path}")
+    print(f"Saved {len(listings)} listings → {path.resolve()}")
 
 
 # ---------------------------------------------------------------------------
@@ -977,11 +1027,27 @@ async def main(args: argparse.Namespace) -> None:
     if removed:
         print(f"Removed {removed} duplicate listing(s).")
 
-    print(f"\nTotal listings: {len(unique_listings)}")
+    print(f"\nTotal listings scraped this run: {len(unique_listings)}")
     if unique_listings:
-        save_csv(unique_listings, OUTPUT_CSV)
+        if getattr(args, "merge", False):
+            existing = load_existing_csv(OUTPUT_CSV)
+            old_count = len(existing)
+            final = merge_listings(existing, unique_listings)
+            added   = sum(1 for r in final if r.get("url") not in existing)
+            updated = sum(1 for r in unique_listings if r.get("url") in existing)
+            kept    = len(final) - len(unique_listings) - added
+            print(f"Merge: {added} new · {updated} updated · {kept} historical sold kept")
+            print(f"Total rows in CSV: {old_count} → {len(final)}")
+            save_csv(final, OUTPUT_CSV)
+        else:
+            save_csv(unique_listings, OUTPUT_CSV)
     else:
-        print("No listings found. Try running with --debug to inspect the page HTML.")
+        print(
+            "No listings found — CSV was NOT updated to avoid overwriting good data.\n"
+            "This usually means Cloudflare blocked the session.\n"
+            "Try: python jawa_scraper.py --clear-cookies\n"
+            f"CSV is still at: {OUTPUT_CSV.resolve()}"
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -996,6 +1062,11 @@ def parse_args() -> argparse.Namespace:
                         help="Stop after N pages per section (useful for testing)")
     parser.add_argument("--clear-cookies", action="store_true",
                         help="Delete saved session cookies and start a fresh CF session")
+    parser.add_argument("--merge", action="store_true",
+                        help=(
+                            "Merge new scrape into existing CSV instead of replacing it. "
+                            "Historical sold listings are kept even if no longer on the site."
+                        ))
     return parser.parse_args()
 
 
