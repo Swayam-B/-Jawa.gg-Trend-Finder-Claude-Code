@@ -533,118 +533,119 @@ def make_lookup_section(df: pd.DataFrame):
     cpus = sorted(df["cpu"].dropna().unique().tolist()) if "cpu" in df.columns else []
     dd = {"backgroundColor": COLORS["card"], "color": COLORS["text"]}
 
+    def multi_dd(id_, options, **kwargs):
+        return dcc.Dropdown(
+            id=id_,
+            options=options,
+            value=[],
+            multi=True,
+            clearable=True,
+            placeholder="Any",
+            style=dd,
+            **kwargs,
+        )
+
     controls = dbc.Card([
         dbc.CardBody([
             # ── Row 1: specific part filters ──────────────────────────────
             dbc.Row([
                 dbc.Col([
                     _label("GPU"),
-                    dcc.Dropdown(id="gpu-filter",
-                                 options=[{"label": "Any", "value": "Any"}] +
-                                         [{"label": g, "value": g} for g in gpus],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("gpu-filter",
+                             [{"label": g, "value": g} for g in gpus]),
                 ], md=3),
                 dbc.Col([
                     _label("CPU"),
-                    dcc.Dropdown(id="cpu-filter",
-                                 options=[{"label": "Any", "value": "Any"}] +
-                                         [{"label": c, "value": c} for c in cpus],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("cpu-filter",
+                             [{"label": c, "value": c} for c in cpus]),
                 ], md=3),
                 dbc.Col([
                     _label("RAM"),
-                    dcc.Dropdown(id="ram-filter",
-                                 options=[{"label": "Any", "value": "Any"},
-                                          {"label": "8 GB",  "value": "8"},
-                                          {"label": "16 GB", "value": "16"},
-                                          {"label": "32 GB", "value": "32"},
-                                          {"label": "64 GB", "value": "64"}],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("ram-filter", [
+                        {"label": "8 GB",  "value": "8"},
+                        {"label": "16 GB", "value": "16"},
+                        {"label": "32 GB", "value": "32"},
+                        {"label": "64 GB", "value": "64"},
+                    ]),
                 ], md=2),
                 dbc.Col([
                     _label("Storage"),
-                    dcc.Dropdown(id="storage-filter",
-                                 options=[
-                                     {"label": "Any",        "value": "Any"},
-                                     {"label": "500GB SSD",  "value": "500GB SSD"},
-                                     {"label": "512GB SSD",  "value": "512GB SSD"},
-                                     {"label": "1TB SSD",    "value": "1TB SSD"},
-                                     {"label": "1TB NVMe",   "value": "1TB NVMe"},
-                                     {"label": "2TB SSD",    "value": "2TB SSD"},
-                                     {"label": "2TB NVMe",   "value": "2TB NVMe"},
-                                     {"label": "2TB HDD",    "value": "2TB HDD"},
-                                 ],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("storage-filter", [
+                        {"label": "500GB SSD",  "value": "500GB SSD"},
+                        {"label": "512GB SSD",  "value": "512GB SSD"},
+                        {"label": "1TB SSD",    "value": "1TB SSD"},
+                        {"label": "1TB NVMe",   "value": "1TB NVMe"},
+                        {"label": "2TB SSD",    "value": "2TB SSD"},
+                        {"label": "2TB NVMe",   "value": "2TB NVMe"},
+                        {"label": "2TB HDD",    "value": "2TB HDD"},
+                    ]),
                 ], md=2),
                 dbc.Col([
                     _label("Build Color"),
-                    dcc.Dropdown(id="color-filter",
-                                 options=[
-                                     {"label": "Any",    "value": "Any"},
-                                     {"label": "White",  "value": "White"},
-                                     {"label": "Black",  "value": "Black"},
-                                     {"label": "Mixed",  "value": "Mixed"},
-                                     {"label": "Pink",   "value": "Pink"},
-                                     {"label": "Purple", "value": "Purple"},
-                                     {"label": "Red",    "value": "Red"},
-                                     {"label": "Blue",   "value": "Blue"},
-                                     {"label": "Gray",   "value": "Gray"},
-                                     {"label": "Silver", "value": "Silver"},
-                                 ],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("color-filter", [
+                        {"label": "White",  "value": "White"},
+                        {"label": "Black",  "value": "Black"},
+                        {"label": "Mixed",  "value": "Mixed"},
+                        {"label": "Pink",   "value": "Pink"},
+                        {"label": "Purple", "value": "Purple"},
+                        {"label": "Red",    "value": "Red"},
+                        {"label": "Blue",   "value": "Blue"},
+                        {"label": "Gray",   "value": "Gray"},
+                        {"label": "Silver", "value": "Silver"},
+                    ]),
                 ], md=2),
             ], className="g-3 mb-3"),
             # ── Row 2: generation / socket / time filters ─────────────────
             dbc.Row([
                 dbc.Col([
                     _label("GPU Generation"),
-                    dcc.Dropdown(id="gpu-gen-filter",
-                                 options=[
-                                     {"label": "Any",             "value": "Any"},
-                                     {"label": "RTX 50 series",   "value": "RTX 50 series"},
-                                     {"label": "RTX 40 series",   "value": "RTX 40 series"},
-                                     {"label": "RTX 30 series",   "value": "RTX 30 series"},
-                                     {"label": "RTX 20 series",   "value": "RTX 20 series"},
-                                     {"label": "GTX 16 series",   "value": "GTX 16 series"},
-                                     {"label": "GTX 10 series",   "value": "GTX 10 series"},
-                                     {"label": "RX 9000 series",  "value": "RX 9000 series"},
-                                     {"label": "RX 7000 series",  "value": "RX 7000 series"},
-                                     {"label": "RX 6000 series",  "value": "RX 6000 series"},
-                                     {"label": "RX 5000 series",  "value": "RX 5000 series"},
-                                     {"label": "RX 500 series",   "value": "RX 500 series"},
-                                     {"label": "Intel Arc",       "value": "Intel Arc"},
-                                 ],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("gpu-gen-filter", [
+                        {"label": "RTX 50 series",   "value": "RTX 50 series"},
+                        {"label": "RTX 40 series",   "value": "RTX 40 series"},
+                        {"label": "RTX 30 series",   "value": "RTX 30 series"},
+                        {"label": "RTX 20 series",   "value": "RTX 20 series"},
+                        {"label": "GTX 16 series",   "value": "GTX 16 series"},
+                        {"label": "GTX 10 series",   "value": "GTX 10 series"},
+                        {"label": "RX 9000 series",  "value": "RX 9000 series"},
+                        {"label": "RX 7000 series",  "value": "RX 7000 series"},
+                        {"label": "RX 6000 series",  "value": "RX 6000 series"},
+                        {"label": "RX 5000 series",  "value": "RX 5000 series"},
+                        {"label": "RX 500 series",   "value": "RX 500 series"},
+                        {"label": "Intel Arc",       "value": "Intel Arc"},
+                    ]),
                 ], md=3),
                 dbc.Col([
                     _label("CPU Socket"),
-                    dcc.Dropdown(id="socket-filter",
-                                 options=[
-                                     {"label": "Any",      "value": "Any"},
-                                     {"label": "AM5",      "value": "AM5"},
-                                     {"label": "AM4",      "value": "AM4"},
-                                     {"label": "LGA1851",  "value": "LGA1851"},
-                                     {"label": "LGA1700",  "value": "LGA1700"},
-                                     {"label": "LGA1200",  "value": "LGA1200"},
-                                     {"label": "LGA1151",  "value": "LGA1151"},
-                                 ],
-                                 value="Any", clearable=False, style=dd),
+                    multi_dd("socket-filter", [
+                        {"label": "AM5",      "value": "AM5"},
+                        {"label": "AM4",      "value": "AM4"},
+                        {"label": "LGA1851",  "value": "LGA1851"},
+                        {"label": "LGA1700",  "value": "LGA1700"},
+                        {"label": "LGA1200",  "value": "LGA1200"},
+                        {"label": "LGA1151",  "value": "LGA1151"},
+                    ]),
                 ], md=3),
                 dbc.Col([
                     _label("Time Range (sold)"),
                     dcc.Slider(id="time-slider", min=0, max=90, step=None, value=30,
                                marks={0: "All", 7: "7d", 14: "14d",
                                       30: "30d", 60: "60d", 90: "90d"}),
-                ], md=4, className="pt-1"),
-                dbc.Col(
+                ], md=3, className="pt-1"),
+                dbc.Col([
                     dbc.Button("🔍 Search", id="search-btn",
                                style={"backgroundColor": COLORS["accent"],
                                       "border": "none", "color": "#0a0c10",
                                       "fontWeight": "700", "marginTop": "22px",
                                       "width": "100%"},
+                               className="px-4 mb-2"),
+                    dbc.Button("✕ Clear", id="clear-btn",
+                               style={"backgroundColor": "transparent",
+                                      "border": f"1px solid {COLORS['border']}",
+                                      "color": COLORS["muted"],
+                                      "fontWeight": "600",
+                                      "width": "100%"},
                                className="px-4"),
-                    md=2,
-                ),
+                ], md=3),
             ], className="g-3"),
         ])
     ], className="chart-card mb-3")
@@ -1052,6 +1053,34 @@ app.index_string = """<!DOCTYPE html>
         border-color: var(--border) !important;
       }
       .Select-value-label, .Select-placeholder { color: var(--text) !important; }
+
+      /* Multi-select tag pills */
+      .Select--multi .Select-value {
+        background-color: rgba(20, 217, 145, 0.15) !important;
+        border: 1px solid rgba(20, 217, 145, 0.4) !important;
+        border-radius: 6px !important;
+        color: var(--accent) !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+      }
+      .Select--multi .Select-value-icon {
+        border-right: 1px solid rgba(20, 217, 145, 0.3) !important;
+        color: var(--accent) !important;
+        padding: 2px 6px !important;
+      }
+      .Select--multi .Select-value-icon:hover {
+        background-color: rgba(20, 217, 145, 0.25) !important;
+        color: #fff !important;
+      }
+      /* Dropdown menu options */
+      .VirtualizedSelectOption.VirtualizedSelectFocusedOption {
+        background-color: var(--card-alt) !important;
+      }
+      .VirtualizedSelectOption.VirtualizedSelectSelectedOption {
+        background-color: rgba(20, 217, 145, 0.12) !important;
+        color: var(--accent) !important;
+      }
+
       .rc-slider-track { background-color: var(--accent) !important; }
       .rc-slider-handle {
         border-color: var(--accent) !important;
@@ -1161,8 +1190,33 @@ app.layout = dbc.Container(
 
 
 # ---------------------------------------------------------------------------
-# Section 2 callback — Spec Lookup
+# Section 2 callbacks — Spec Lookup
 # ---------------------------------------------------------------------------
+
+# Clear all filters
+@app.callback(
+    Output("gpu-filter",     "value"),
+    Output("cpu-filter",     "value"),
+    Output("ram-filter",     "value"),
+    Output("storage-filter", "value"),
+    Output("color-filter",   "value"),
+    Output("gpu-gen-filter", "value"),
+    Output("socket-filter",  "value"),
+    Input("clear-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def clear_filters(_):
+    return [], [], [], [], [], [], []
+
+
+def _active_list(val) -> list:
+    """Normalise a multi-dropdown value to a plain list, ignoring empty/None."""
+    if not val:
+        return []
+    if isinstance(val, str):
+        return [val] if val and val != "Any" else []
+    return [v for v in val if v and v != "Any"]
+
 
 @app.callback(
     Output("lookup-results", "children"),
@@ -1186,31 +1240,40 @@ def run_lookup(n_clicks, gpu_sel, cpu_sel, ram_sel, storage_sel,
 
     mask = pd.Series([True] * len(df), index=df.index)
 
-    if gpu_sel and gpu_sel != "Any":
-        mask &= df["gpu"].str.contains(gpu_sel, case=False, na=False)
+    gpus = _active_list(gpu_sel)
+    if gpus:
+        mask &= df["gpu"].isin(gpus)
 
-    if cpu_sel and cpu_sel != "Any":
-        mask &= df["cpu"].str.contains(cpu_sel, case=False, na=False)
+    cpus = _active_list(cpu_sel)
+    if cpus:
+        mask &= df["cpu"].isin(cpus)
 
-    if ram_sel and ram_sel != "Any":
+    rams = _active_list(ram_sel)
+    if rams:
         try:
-            mask &= df["ram_gb"] == int(ram_sel)
+            ram_ints = [int(r) for r in rams]
+            mask &= df["ram_gb"].isin(ram_ints)
         except ValueError:
             pass
 
-    if storage_sel and storage_sel != "Any":
-        mask &= df["storage"].str.contains(
-            re.escape(storage_sel), case=False, na=False
-        )
+    storages = _active_list(storage_sel)
+    if storages:
+        storage_mask = pd.Series([False] * len(df), index=df.index)
+        for s in storages:
+            storage_mask |= df["storage"].str.contains(re.escape(s), case=False, na=False)
+        mask &= storage_mask
 
-    if color_sel and color_sel != "Any" and "color" in df.columns:
-        mask &= df["color"].str.lower() == color_sel.lower()
+    colors = _active_list(color_sel)
+    if colors and "color" in df.columns:
+        mask &= df["color"].isin(colors)
 
-    if gpu_gen_sel and gpu_gen_sel != "Any":
-        mask &= df["gpu"].apply(gpu_generation) == gpu_gen_sel
+    gpu_gens = _active_list(gpu_gen_sel)
+    if gpu_gens:
+        mask &= df["gpu"].apply(gpu_generation).isin(gpu_gens)
 
-    if socket_sel and socket_sel != "Any":
-        mask &= df["cpu"].apply(cpu_socket) == socket_sel
+    sockets = _active_list(socket_sel)
+    if sockets:
+        mask &= df["cpu"].apply(cpu_socket).isin(sockets)
 
     matched = df[mask].copy()
 
