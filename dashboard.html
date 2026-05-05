@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jawa.gg Market Trends — AstroLabPCs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:        #0a0c10;
+  --card:      #14171c;
+  --card-alt:  #1c2128;
+  --border:    #2d333b;
+  --accent:    #4361EE;
+  --accent2:   #7B93FF;
+  --sold:      #4361EE;
+  --active:    #F72585;
+  --gold:      #fbbf24;
+  --danger:    #f87171;
+  --text:      #c9d1d9;
+  --muted:     #8b949e;
+  --radius:    12px;
+  --font:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+html { font-size: 14px; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+}
+input, select, button { font-family: var(--font); }
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3d444c; }
+
+/* ── Layout ───────────────────────────────────────────────────────── */
+.app-root { display: flex; flex-direction: column; min-height: 100vh; }
+.app-main  { flex: 1; padding: 24px 28px 60px; max-width: 1600px; margin: 0 auto; width: 100%; }
+.section-body { display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Header ───────────────────────────────────────────────────────── */
+.app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0d1016 0%, var(--bg) 100%);
+  position: sticky; top: 0; z-index: 100;
+  backdrop-filter: blur(12px);
+}
+.header-logo { display: flex; align-items: center; gap: 14px; }
+.header-title { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.025em; color: var(--text); }
+.header-sub   { font-size: 0.78rem; color: var(--muted); margin-top: 1px; }
+.header-badge {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 20px; letter-spacing: 0.04em;
+}
+
+/* ── Tab bar ──────────────────────────────────────────────────────── */
+.tab-bar {
+  display: flex; gap: 4px; padding: 10px 28px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  position: sticky; top: 65px; z-index: 99;
+}
+.tab-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 18px; border-radius: 8px;
+  border: 1px solid transparent; background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s; white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text); background: var(--card-alt); }
+.tab-active { color: var(--accent) !important; background: #4361EE14 !important; border-color: #4361EE44 !important; }
+.tab-icon { font-size: 15px; }
+
+/* ── KPI Strip ────────────────────────────────────────────────────── */
+.kpi-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .kpi-strip { grid-template-columns: repeat(3,1fr); } }
+@media (max-width: 700px)  { .kpi-strip { grid-template-columns: repeat(2,1fr); } }
+.kpi-card {
+  background: linear-gradient(145deg, var(--card) 0%, var(--card-alt) 100%);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; text-align: center;
+  animation: slideUp 0.4s ease both;
+  transition: border-color 0.2s, transform 0.2s; cursor: default;
+}
+.kpi-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+.kpi-value { font-size: 1.6rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* ── Brand legend ─────────────────────────────────────────────────── */
+.brand-legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+  padding: 10px 16px; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+}
+.legend-group-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+.brand-chip { display: inline-flex; align-items: center; gap: 6px; }
+.brand-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.brand-label { font-size: 12px; font-weight: 500; color: var(--text); }
+.legend-sep { width: 1px; height: 16px; background: var(--border); }
+
+/* ── Chart grids ──────────────────────────────────────────────────── */
+.chart-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart-grid-3 { display: grid; grid-template-columns: 1.1fr 0.9fr 0.9fr; gap: 16px; }
+@media (max-width: 900px) { .chart-grid-2, .chart-grid-3 { grid-template-columns: 1fr; } }
+
+/* ── Chart card ───────────────────────────────────────────────────── */
+.chart-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; transition: border-color 0.2s;
+}
+.chart-card:hover { border-color: #394149; }
+.chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.chart-title { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+
+/* ── Lookup section ───────────────────────────────────────────────── */
+.lookup-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 900px) { .filter-grid { grid-template-columns: repeat(2,1fr); } }
+.filter-group { display: flex; flex-direction: column; gap: 6px; }
+.filter-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+.slider-wrap { display: flex; align-items: center; gap: 10px; }
+.jawa-slider {
+  flex: 1; -webkit-appearance: none; height: 4px;
+  background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+}
+.jawa-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--card); cursor: pointer;
+}
+.slider-val { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 30px; text-align: right; }
+
+.search-btn {
+  width: 100%; padding: 10px 20px; border-radius: 8px; border: none;
+  background: linear-gradient(135deg, var(--accent), #7B93FF); color: #fff;
+  font-size: 13px; font-weight: 800; cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.search-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.search-btn:active { transform: translateY(0); }
+
+/* ── Results table ────────────────────────────────────────────────── */
+.lookup-results { display: flex; flex-direction: column; gap: 16px; }
+.results-table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; }
+.results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.results-table th {
+  padding: 10px 14px; text-align: left; background: var(--card-alt); color: var(--accent);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.results-table td { padding: 9px 14px; border-bottom: 1px solid #2d333b44; }
+.row-even { background: var(--card); }
+.row-odd  { background: #16191e; }
+.results-table tr:last-child td { border-bottom: none; }
+.results-table tr:hover td { background: var(--card-alt); }
+.cell-title { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.status-badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.status-sold   { background: #4361EE20; color: var(--sold);   border: 1px solid #4361EE50; }
+.status-active { background: #F7258520; color: var(--active); border: 1px solid #F7258550; }
+
+/* ── Empty state ──────────────────────────────────────────────────── */
+.empty-state {
+  text-align: center; padding: 48px 20px; color: var(--muted); font-size: 14px;
+  background: var(--card); border: 1px dashed var(--border); border-radius: var(--radius);
+}
+
+/* ── Recommendations ──────────────────────────────────────────────── */
+.reco-banner {
+  background: linear-gradient(90deg, #4361EE0a 0%, transparent 60%);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius); padding: 14px 18px; color: var(--muted); font-size: 13px; line-height: 1.5;
+}
+.reco-banner strong { color: var(--text); }
+.reco-list { display: flex; flex-direction: column; gap: 14px; }
+.reco-card {
+  background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: var(--radius); padding: 20px;
+  animation: slideUp 0.45s ease both;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.reco-card:hover { border-color: #394149; border-left-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 24px #00000060; }
+.reco-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.reco-rank { font-size: 12px; font-weight: 800; color: var(--muted); min-width: 26px; }
+.reco-combo { display: flex; align-items: center; gap: 8px; flex: 1; flex-wrap: wrap; }
+.reco-cpu  { font-size: 15px; font-weight: 700; color: var(--text); }
+.reco-plus { font-size: 13px; color: var(--muted); }
+.reco-gpu  { font-size: 15px; font-weight: 700; }
+.reco-tag {
+  font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px;
+  background: #4361EE18; color: var(--accent); border: 1px solid #4361EE44; white-space: nowrap;
+}
+.score-bar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.score-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.score-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1); }
+.score-num { font-size: 12px; font-weight: 700; min-width: 54px; text-align: right; }
+.reco-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 800px) { .reco-stats { grid-template-columns: repeat(2,1fr); } }
+.reco-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 3px; }
+.reco-stat-val { font-size: 14px; font-weight: 700; color: var(--text); }
+.section-divider { display: flex; align-items: center; gap: 12px; margin: 10px 0 6px; }
+.section-divider::before, .section-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.section-divider span { font-size: 13px; font-weight: 800; color: var(--danger); white-space: nowrap; }
+.avoid-intro { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.avoid-card {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--danger);
+  border-radius: var(--radius); padding: 14px 18px; margin-bottom: 8px;
+  transition: transform 0.15s;
+}
+.avoid-card:hover { transform: translateX(2px); }
+.avoid-combo { font-size: 14px; font-weight: 700; color: var(--danger); flex: 1; min-width: 200px; }
+.avoid-meta  { font-size: 12px; color: var(--muted); flex: 1; }
+.avoid-tag { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: #f8717115; color: var(--danger); border: 1px solid #f8717130; white-space: nowrap; }
+
+/* ── Animations ───────────────────────────────────────────────────── */
+@keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fadeIn 0.3s ease; }
+.section-body > * { animation: slideUp 0.35s ease both; }
+.section-body > *:nth-child(1) { animation-delay: 0ms;   }
+.section-body > *:nth-child(2) { animation-delay: 40ms;  }
+.section-body > *:nth-child(3) { animation-delay: 80ms;  }
+.section-body > *:nth-child(4) { animation-delay: 120ms; }
+.section-body > *:nth-child(5) { animation-delay: 160ms; }
+.section-body > *:nth-child(6) { animation-delay: 200ms; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#7d8590">
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#4361EE"/><stop offset="100%" stop-color="#F72585"/></linearGradient></defs>
+      <rect width="40" height="40" rx="10" fill="url(#lg)"/>
+      <path d="M22 8 L22 22 Q22 29 15 29 L15 33 Q25 33 27 24 L27 8 Z" fill="white"/>
+      <rect x="12" y="8" width="10" height="4" rx="1" fill="white"/>
+    </svg>
+    <div style="font-size:13px;letter-spacing:.05em">Loading dashboard…</div>
+  </div>
+</div>
+
+<script>
+const TWEAK_DEFAULTS = {
+  "accentColor": "#4361EE",
+  "activeColor": "#ff8abe",
+  "showScoreBar": false,
+  "chartHeight": 280
+};
+</script>
+<script src="/api/data.js"></script>
+
+<script type="text/babel">
+
+// ── tweaks-panel ─────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+  .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;height:22px;
+    border-radius:6px;cursor:default;padding:0}
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+  .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+`;
+
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  const setTweak = React.useCallback((key, val) => {
+    setValues((prev) => ({ ...prev, [key]: val }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+  }, []);
+  return [values, setTweak];
+}
+
+function TweaksPanel({ title = 'Tweaks', children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel"
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">{children}</div>
+      </div>
+    </>
+  );
+}
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+function TweakColor({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <input type="color" className="twk-swatch" value={value}
+             onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+</script>
+
+<script type="text/babel">
+
+// ── dashboard-app ─────────────────────────────────────────────────────────────
+
+if (typeof Chart !== "undefined" && Array.isArray(Chart.registerables)) {
+  Chart.register(...Chart.registerables);
+}
+
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+function getPalette(blue, pink) {
+  blue = blue || "#4361EE";
+  pink = pink || "#F72585";
+  return {
+    bg:"#0a0c10", card:"#14171c", cardAlt:"#1c2128", border:"#2d333b",
+    accent: blue, accent2:"#7B93FF", sold: blue, active: pink,
+    gold:"#fbbf24", danger:"#f87171", text:"#c9d1d9", muted:"#8b949e",
+  };
+}
+let C = getPalette();
+const BC = { nvidia:"#76b900", amd:"#ed1c24", intel:"#0071c5", other:"#7d8590" };
+
+const CHART_DEFAULTS = {
+  responsive: true, maintainAspectRatio: false,
+  animation: { duration: 700, easing: "easeOutQuart" },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: C.cardAlt, borderColor: C.accent, borderWidth: 1,
+      titleColor: C.text, bodyColor: C.muted,
+      padding: 10, cornerRadius: 8,
+    },
+  },
+  scales: {
+    x: { grid: { color: C.border }, ticks: { color: C.muted } },
+    y: { grid: { color: C.border }, ticks: { color: C.muted } },
+  },
+};
+
+function partBrand(n) {
+  if (!n) return "other";
+  const s = n.toUpperCase();
+  if (/^(RTX|GTX)/.test(s)) return "nvidia";
+  if (/^(RX |RADEON|RYZEN|THREADRIPPER)/.test(s)) return "amd";
+  if (/^(ARC|INTEL|CORE ULTRA|CORE |I[3579][-\s])/.test(s)) return "intel";
+  return "other";
+}
+const brandColor = n => BC[partBrand(n)] || C.muted;
+
+function gpuGen(n) {
+  if (!n) return null;
+  const checks = [
+    [/RTX\s*50\d{2}/i,"RTX 50 series"], [/RTX\s*40\d{2}/i,"RTX 40 series"],
+    [/RTX\s*30\d{2}/i,"RTX 30 series"], [/RTX\s*20\d{2}/i,"RTX 20 series"],
+    [/GTX\s*1[6-9]\d{2}/i,"GTX 16 series"], [/GTX\s*1[0-5]\d{2}/i,"GTX 10 series"],
+    [/RX\s*9\d{3}/i,"RX 9000 series"], [/RX\s*7\d{3}/i,"RX 7000 series"],
+    [/RX\s*6\d{3}/i,"RX 6000 series"], [/Arc/i,"Intel Arc"],
+  ];
+  for (const [re, label] of checks) if (re.test(n)) return label;
+  return null;
+}
+
+function cpuSocket(n) {
+  if (!n) return null;
+  if (/Core Ultra/i.test(n)) return "LGA1851";
+  const am = n.match(/Ryzen\s+\d+\s+(\d)\d{3}/i);
+  if (am) return parseInt(am[1]) >= 7 ? "AM5" : "AM4";
+  const im = n.match(/i[3579][-\s](\d{4,5})/i);
+  if (im) {
+    const num = parseInt(im[1].replace(/\D/g,""));
+    if (num >= 12000) return "LGA1700";
+    if (num >= 10000) return "LGA1200";
+    return "LGA1151";
+  }
+  return null;
+}
+
+function estimateBuildCost(gpu, cpu, ram, storage) {
+  const P = window.PART_COSTS || {};
+  const gc = P[gpu], cc = P[cpu];
+  if (!gc || !cc) return null;
+  const rc = (parseFloat(ram) || 16) * 2.5;
+  let sc = 40;
+  if (storage) {
+    const s = storage.toUpperCase();
+    if (s.includes("2TB")) sc = 70;
+    else if (s.includes("1TB")) sc = 45;
+    else if (s.includes("512") || s.includes("500")) sc = 30;
+  }
+  return Math.round(gc + cc + rc + sc + 200);
+}
+
+function daysToSell(row) {
+  if (!row.date_sold || !row.date_listed) return null;
+  const diff = (new Date(row.date_sold) - new Date(row.date_listed)) / 86400000;
+  return Math.max(0, Math.round(diff));
+}
+
+function fmt$(n) { return n != null ? `$${Math.round(n).toLocaleString()}` : "—"; }
+
+function useCountUp(target, duration = 900) {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf, start = null;
+    const step = ts => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      setVal(Math.round(p * p * (3 - 2 * p) * target));
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+function ChartCard({ title, height = 280, children }) {
+  return (
+    <div className="chart-card">
+      <div className="chart-header">
+        <span className="chart-title">{title}</span>
+      </div>
+      <div style={{ position:"relative", height }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function TopPartsChart({ data, col, title, height = 280 }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const counts = {};
+    data.forEach(r => { if (r[col]) counts[r[col]] = (counts[r[col]] || 0) + 1; });
+    const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).reverse();
+    const labels = sorted.map(x=>x[0]);
+    const values = sorted.map(x=>x[1]);
+    const colors = labels.map(l => brandColor(l));
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type: "bar",
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 4, borderSkipped: false }] },
+      options: { ...CHART_DEFAULTS, indexAxis: "y",
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, title: { display:true, text:"Listings", color:C.muted } },
+          y: { ...CHART_DEFAULTS.scales.y }
+        },
+      },
+    });
+    return () => chart.current?.destroy();
+  }, [data, col]);
+  return <ChartCard title={title} height={height}><canvas ref={ref} /></ChartCard>;
+}
+
+function CombosChart({ data }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const comboCounts = {}, comboStatus = {};
+    data.forEach(r => {
+      if (!r.gpu || !r.cpu) return;
+      const k = `${r.cpu} + ${r.gpu}`;
+      comboCounts[k] = (comboCounts[k] || 0) + 1;
+      if (!comboStatus[k]) comboStatus[k] = { sold:0, active:0 };
+      comboStatus[k][r.status] = (comboStatus[k][r.status] || 0) + 1;
+    });
+    const top = Object.entries(comboCounts).sort((a,b)=>b[1]-a[1]).slice(0,12).reverse();
+    const labels = top.map(x=>x[0]);
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          { label:"Sold",   data: labels.map(l=>comboStatus[l]?.sold||0),   backgroundColor: C.sold+"cc",   borderRadius:3 },
+          { label:"Active", data: labels.map(l=>comboStatus[l]?.active||0), backgroundColor: C.active+"cc", borderRadius:3 },
+        ],
+      },
+      options: { ...CHART_DEFAULTS, indexAxis:"y",
+        plugins: { ...CHART_DEFAULTS.plugins, legend: { display:true, labels: { color:C.muted, boxWidth:12 } } },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, stacked:true },
+          y: { ...CHART_DEFAULTS.scales.y, stacked:true }
+        },
+      },
+    });
+    return () => chart.current?.destroy();
+  }, [data]);
+  return <ChartCard title="Top 12 CPU + GPU Combos" height={380}><canvas ref={ref} /></ChartCard>;
+}
+
+function PriceDistChart({ data }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const bins = Array.from({length:50},(_,i)=>i*100);
+    const mkBins = rows => bins.map(b => rows.filter(r=>r.price>=b&&r.price<b+100).length);
+    const sold   = data.filter(r=>r.status==="sold"&&r.price<=5000);
+    const active = data.filter(r=>r.status==="active"&&r.price<=5000);
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type:"bar",
+      data: {
+        labels: bins.map(b=>`$${b}`),
+        datasets: [
+          { label:"Sold",   data:mkBins(sold),   backgroundColor:C.sold+"99",   borderRadius:2 },
+          { label:"Active", data:mkBins(active), backgroundColor:C.active+"99", borderRadius:2 },
+        ],
+      },
+      options: { ...CHART_DEFAULTS, barPercentage:1, categoryPercentage:1,
+        plugins: { ...CHART_DEFAULTS.plugins, legend: { display:true, labels:{ color:C.muted, boxWidth:12 } } },
+        scales: {
+          x: { ...CHART_DEFAULTS.scales.x, ticks:{ maxTicksLimit:10, color:C.muted } },
+          y: { ...CHART_DEFAULTS.scales.y }
+        },
+      },
+    });
+    return () => chart.current?.destroy();
+  }, [data]);
+  return <ChartCard title="Price Distribution ($100 bins, $0–$5k)"><canvas ref={ref} /></ChartCard>;
+}
+
+function PriceRangeChart({ data }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const labels = ["Under $500","$500–$800","$800–$1,200","$1,200+"];
+    const bucket = p => p<500?0:p<800?1:p<1200?2:3;
+    const mkBuckets = rows => { const a=[0,0,0,0]; rows.forEach(r=>r.price&&a[bucket(r.price)]++); return a; };
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type:"bar",
+      data: {
+        labels,
+        datasets: [
+          { label:"Sold",   data:mkBuckets(data.filter(r=>r.status==="sold")),   backgroundColor:C.sold+"cc",   borderRadius:4 },
+          { label:"Active", data:mkBuckets(data.filter(r=>r.status==="active")), backgroundColor:C.active+"cc", borderRadius:4 },
+        ],
+      },
+      options: { ...CHART_DEFAULTS,
+        plugins: { ...CHART_DEFAULTS.plugins, legend:{ display:true, labels:{ color:C.muted, boxWidth:12 } } },
+        scales: {
+          x:{ ...CHART_DEFAULTS.scales.x },
+          y:{ ...CHART_DEFAULTS.scales.y }
+        },
+      },
+    });
+    return () => chart.current?.destroy();
+  }, [data]);
+  return <ChartCard title="Listings by Price Range" height={260}><canvas ref={ref} /></ChartCard>;
+}
+
+function BrandSellThroughChart({ data, col, title }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const brands = {};
+    data.forEach(r => {
+      if (!r[col]) return;
+      const b = partBrand(r[col]);
+      if (!brands[b]) brands[b] = { sold:0, total:0 };
+      brands[b].total++;
+      if (r.status==="sold") brands[b].sold++;
+    });
+    const valid = Object.entries(brands).filter(([,v])=>v.total>=3);
+    const sorted = valid.sort((a,b)=>(a[1].sold/a[1].total)-(b[1].sold/b[1].total));
+    const labels = sorted.map(([k])=>k.charAt(0).toUpperCase()+k.slice(1));
+    const values = sorted.map(([,v])=>Math.round(v.sold/v.total*100));
+    const colors = sorted.map(([k])=>BC[k]||C.muted);
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type:"bar",
+      data: { labels, datasets: [{ data:values, backgroundColor:colors, borderRadius:6 }] },
+      options: { ...CHART_DEFAULTS, indexAxis:"y",
+        plugins: { ...CHART_DEFAULTS.plugins,
+          tooltip: { ...CHART_DEFAULTS.plugins.tooltip,
+            callbacks: { label: ctx => ` ${ctx.parsed.x}% sell-through` },
+          },
+        },
+        scales: {
+          x:{ ...CHART_DEFAULTS.scales.x, max:110, ticks:{ callback:v=>`${v}%`, color:C.muted } },
+          y:{ ...CHART_DEFAULTS.scales.y }
+        },
+      },
+    });
+    return () => chart.current?.destroy();
+  }, [data, col]);
+  return <ChartCard title={title} height={200}><canvas ref={ref} /></ChartCard>;
+}
+
+const COLOR_SWATCH = {
+  Black: "#2d333b", White: "#e6edf3", RGB: "#a78bfa",
+  Red: "#ef4444", Blue: "#3b82f6", Pink: "#ec4899", Custom: "#f59e0b",
+};
+
+function ColorDistChart({ data, height = 260 }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const counts = {};
+    data.forEach(r => { if (r.color) counts[r.color] = (counts[r.color]||0)+1; });
+    const order = ["Black","White","RGB","Red","Blue","Pink","Custom","Mixed"].filter(c=>counts[c]);
+    const labels = order;
+    const values = order.map(c=>counts[c]);
+    const bg = order.map(c=>COLOR_SWATCH[c]||C.accent);
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type: "doughnut",
+      data: { labels, datasets:[{ data:values, backgroundColor:bg, borderColor:C.card, borderWidth:2 }] },
+      options: { ...CHART_DEFAULTS, cutout:"60%",
+        plugins:{ ...CHART_DEFAULTS.plugins,
+          legend:{ display:true, position:"right", labels:{ color:C.muted, font:{size:11}, boxWidth:10, padding:8 } } },
+        scales:{} },
+    });
+    return () => chart.current?.destroy();
+  }, [data]);
+  return <ChartCard title="Build Color Distribution" height={height}><canvas ref={ref} /></ChartCard>;
+}
+
+function SellSpeedByBrand({ data, col, title, height = 260 }) {
+  const ref = useRef(); const chart = useRef();
+  useEffect(() => {
+    const groups = {};
+    data.forEach(r => {
+      if (r.status !== "sold") return;
+      const part = r[col]; if (!part) return;
+      const brand = partBrand(part);
+      const days = daysToSell(r); if (days == null) return;
+      if (!groups[brand]) groups[brand] = [];
+      groups[brand].push(days);
+    });
+    const labels = Object.keys(groups).filter(b => groups[b].length > 0);
+    const values = labels.map(b => groups[b].reduce((s,d)=>s+d,0)/groups[b].length);
+    const colors = labels.map(b => BC[b.toLowerCase()] || C.accent);
+    if (chart.current) chart.current.destroy();
+    chart.current = new Chart(ref.current, {
+      type: "bar",
+      data: { labels, datasets:[{ data:values, backgroundColor:colors, borderRadius:6, borderSkipped:false }] },
+      options: { ...CHART_DEFAULTS,
+        plugins:{ ...CHART_DEFAULTS.plugins,
+          tooltip:{ ...CHART_DEFAULTS.plugins.tooltip,
+            callbacks:{ label:(ctx)=>` ${ctx.parsed.y.toFixed(1)} days avg` } } },
+        scales:{
+          x:{ ...CHART_DEFAULTS.scales.x },
+          y:{ ...CHART_DEFAULTS.scales.y, title:{ display:true, text:"Avg days to sell", color:C.muted } }
+        },
+      },
+    });
+    return () => chart.current?.destroy();
+  }, [data, col]);
+  return <ChartCard title={title} height={height}><canvas ref={ref} /></ChartCard>;
+}
+
+function KPICard({ label, raw, fmt, color, delay = 0 }) {
+  const val = useCountUp(raw, 900 + delay);
+  return (
+    <div className="kpi-card" style={{ animationDelay:`${delay}ms` }}>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value" style={{ color }}>{fmt(val)}</div>
+    </div>
+  );
+}
+
+function KPIStrip({ data }) {
+  const sold   = data.filter(r=>r.status==="sold");
+  const active = data.filter(r=>r.status==="active");
+  const avgSold   = sold.reduce((s,r)=>s+(r.price||0),0) / (sold.length||1);
+  const avgActive = active.reduce((s,r)=>s+(r.price||0),0) / (active.length||1);
+  const pct = Math.round(sold.length/data.length*100) || 0;
+  return (
+    <div className="kpi-strip">
+      <KPICard label="Total Listings" raw={data.length}          fmt={v=>`${v}`}                        color={C.accent}  delay={0}   />
+      <KPICard label="Sold"           raw={sold.length}          fmt={v=>`${v}`}                        color={C.sold}    delay={60}  />
+      <KPICard label="Active"         raw={active.length}        fmt={v=>`${v}`}                        color={C.active}  delay={120} />
+      <KPICard label="Sell-Through"   raw={pct}                  fmt={v=>`${v}%`}                       color={C.gold}    delay={180} />
+      <KPICard label="Avg Sold Price" raw={Math.round(avgSold)}  fmt={v=>`$${v.toLocaleString()}`}      color={C.sold}    delay={240} />
+      <KPICard label="Avg List Price" raw={Math.round(avgActive)}fmt={v=>`$${v.toLocaleString()}`}      color={C.active}  delay={300} />
+    </div>
+  );
+}
+
+function BrandLegend() {
+  const chip = (label, color) => (
+    <span key={label} className="brand-chip">
+      <span className="brand-dot" style={{ background: color }} />
+      <span className="brand-label">{label}</span>
+    </span>
+  );
+  return (
+    <div className="brand-legend">
+      <span className="legend-group-title">Brand</span>
+      {chip("NVIDIA","#76b900")}{chip("AMD","#ed1c24")}{chip("Intel","#0071c5")}
+      <span className="legend-sep" />
+      <span className="legend-group-title">Status</span>
+      {chip("Sold",C.sold)}{chip("Active",C.active)}
+    </div>
+  );
+}
+
+function MarketTrends({ data, chartHeight = 280 }) {
+  return (
+    <div className="section-body fade-in">
+      <KPIStrip data={data} />
+      <BrandLegend />
+      <div className="chart-grid-2">
+        <TopPartsChart data={data} col="gpu" title="Top 10 GPUs by Listings" height={chartHeight} />
+        <TopPartsChart data={data} col="cpu" title="Top 10 CPUs by Listings" height={chartHeight} />
+      </div>
+      <CombosChart data={data} />
+      <div className="chart-grid-3">
+        <ColorDistChart data={data} height={chartHeight} />
+        <SellSpeedByBrand data={data} col="gpu" title="Avg Days to Sell — GPU Brand" height={chartHeight} />
+        <SellSpeedByBrand data={data} col="cpu" title="Avg Days to Sell — CPU Brand" height={chartHeight} />
+      </div>
+      <div className="chart-grid-3">
+        <PriceRangeChart data={data} />
+        <BrandSellThroughChart data={data} col="gpu" title="GPU Brand Sell-Through %" />
+        <BrandSellThroughChart data={data} col="cpu" title="CPU Brand Sell-Through %" />
+      </div>
+      <PriceDistChart data={data} />
+    </div>
+  );
+}
+
+const SELECT_STYLE = {
+  background: "#1c2128", color: "#c9d1d9", border:"1px solid #2d333b",
+  borderRadius: 8, padding: "8px 10px", fontSize: 13, width:"100%", outline:"none",
+};
+
+function SpecLookup({ data }) {
+  const gpus   = useMemo(()=>[...new Set(data.map(r=>r.gpu).filter(Boolean))].sort(),[data]);
+  const cpus   = useMemo(()=>[...new Set(data.map(r=>r.cpu).filter(Boolean))].sort(),[data]);
+  const colors = useMemo(()=>[...new Set(data.map(r=>r.color).filter(Boolean))].sort(),[data]);
+
+  const [filters, setFilters] = useState({
+    gpu:"Any", cpu:"Any", ram:"Any", storage:"Any",
+    gpuGen:"Any", socket:"Any", color:"Any", days:30
+  });
+  const [results, setResults] = useState(null);
+  const set = (k,v) => setFilters(f=>({...f,[k]:v}));
+
+  function search() {
+    let rows = [...data];
+    if (filters.gpu !== "Any")     rows = rows.filter(r=>r.gpu === filters.gpu);
+    if (filters.cpu !== "Any")     rows = rows.filter(r=>r.cpu === filters.cpu);
+    if (filters.ram !== "Any")     rows = rows.filter(r=>String(r.ram_gb) === filters.ram);
+    if (filters.storage !== "Any") rows = rows.filter(r=>r.storage && r.storage.toLowerCase().includes(filters.storage.toLowerCase()));
+    if (filters.gpuGen !== "Any")  rows = rows.filter(r=>gpuGen(r.gpu) === filters.gpuGen);
+    if (filters.socket !== "Any")  rows = rows.filter(r=>cpuSocket(r.cpu) === filters.socket);
+    if (filters.color !== "Any")   rows = rows.filter(r=>r.color === filters.color);
+
+    const cutoff = filters.days > 0
+      ? new Date(Date.now() - filters.days * 86400000).toISOString()
+      : null;
+    const sold   = rows.filter(r=>r.status==="sold" && (!cutoff || !r.date_sold || r.date_sold >= cutoff));
+    const active = rows.filter(r=>r.status==="active");
+    setResults({ sold, active, all: rows });
+  }
+
+  function clearAll() {
+    setFilters({ gpu:"Any", cpu:"Any", ram:"Any", storage:"Any", gpuGen:"Any", socket:"Any", color:"Any", days:30 });
+    setResults(null);
+  }
+
+  const avgSold   = results ? results.sold.reduce((s,r)=>s+r.price,0)/(results.sold.length||1) : 0;
+  const avgActive = results ? results.active.reduce((s,r)=>s+r.price,0)/(results.active.length||1) : 0;
+
+  const FilterDropdown = ({ label, k, opts }) => (
+    <div className="filter-group">
+      <label className="filter-label">{label}</label>
+      <select style={SELECT_STYLE} value={filters[k]} onChange={e=>set(k,e.target.value)}>
+        <option value="Any">Any</option>
+        {opts.map(o=><option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+
+  return (
+    <div className="section-body fade-in">
+      <div className="lookup-card">
+        <div className="filter-grid">
+          <FilterDropdown label="GPU" k="gpu" opts={gpus} />
+          <FilterDropdown label="CPU" k="cpu" opts={cpus} />
+          <FilterDropdown label="RAM" k="ram" opts={["8","16","32","64"]} />
+          <FilterDropdown label="Storage" k="storage" opts={["512GB","1TB","2TB","NVMe","SSD"]} />
+          <FilterDropdown label="GPU Generation" k="gpuGen" opts={["RTX 50 series","RTX 40 series","RTX 30 series","RTX 20 series","GTX 16 series","GTX 10 series","RX 9000 series","RX 7000 series","RX 6000 series","Intel Arc"]} />
+          <FilterDropdown label="CPU Socket" k="socket" opts={["AM5","AM4","LGA1700","LGA1200","LGA1151","LGA1851"]} />
+          <FilterDropdown label="Build Color" k="color" opts={colors} />
+          <div className="filter-group">
+            <label className="filter-label">Time Range (days)</label>
+            <div className="slider-wrap">
+              <input type="range" min={7} max={90} step={1} value={filters.days}
+                onChange={e=>set("days",+e.target.value)}
+                className="jawa-slider" />
+              <span className="slider-val">{filters.days}d</span>
+            </div>
+          </div>
+          <div className="filter-group" style={{ display:"flex", flexDirection:"row", alignItems:"flex-end", gap:8 }}>
+            <button className="search-btn" onClick={search} style={{ flex:1 }}>🔍 Search</button>
+            <button onClick={clearAll} style={{
+              padding:"10px 14px", borderRadius:8, border:"1px solid #2d333b",
+              background:"transparent", color:"#8b949e", fontSize:13, fontWeight:700, cursor:"pointer"
+            }}>✕</button>
+          </div>
+        </div>
+      </div>
+
+      {results && (
+        <div className="lookup-results fade-in">
+          <div className="kpi-strip" style={{ gridTemplateColumns:"repeat(4,1fr)", marginBottom:20 }}>
+            {[
+              { label:"Sold Matches",    val:`${results.sold.length}`,   color:C.sold   },
+              { label:"Active Matches",  val:`${results.active.length}`, color:C.active },
+              { label:"Avg Sold Price",  val:fmt$(avgSold),              color:C.sold   },
+              { label:"Avg Active Price",val:fmt$(avgActive),            color:C.active },
+            ].map(k=>(
+              <div key={k.label} className="kpi-card">
+                <div className="kpi-label">{k.label}</div>
+                <div className="kpi-value" style={{ color:k.color }}>{k.val}</div>
+              </div>
+            ))}
+          </div>
+
+          {results.all.length === 0 ? (
+            <div className="empty-state">No listings match the selected filters.</div>
+          ) : (
+            <div className="results-table-wrap">
+              <table className="results-table">
+                <thead>
+                  <tr>
+                    {["Title","Price","Status","GPU","CPU","Color","RAM","Storage"].map(h=>(
+                      <th key={h}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.all.slice(0,100).map((r,i)=>(
+                    <tr key={i} className={i%2===0?"row-even":"row-odd"}>
+                      <td className="cell-title">
+                        {r.url ? (
+                          <a href={r.url} target="_blank" rel="noopener noreferrer"
+                             style={{ color:"#c9d1d9", textDecoration:"none", borderBottom:"1px dashed #2d333b" }}
+                             onMouseEnter={e=>{e.currentTarget.style.color=C.accent;}}
+                             onMouseLeave={e=>{e.currentTarget.style.color="#c9d1d9";}}>
+                            {r.title} <span style={{ fontSize:10, opacity:0.5 }}>↗</span>
+                          </a>
+                        ) : r.title}
+                      </td>
+                      <td style={{ color:"#fbbf24", fontWeight:700 }}>{fmt$(r.price)}</td>
+                      <td>
+                        <span className={`status-badge status-${r.status}`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td style={{ color:brandColor(r.gpu) }}>{r.gpu||"—"}</td>
+                      <td style={{ color:brandColor(r.cpu) }}>{r.cpu||"—"}</td>
+                      <td>
+                        {r.color ? (
+                          <span style={{ display:"inline-flex", alignItems:"center", gap:6, fontSize:12 }}>
+                            <span style={{ width:10, height:10, borderRadius:"50%", background:COLOR_SWATCH[r.color]||C.muted, border:"1px solid #2d333b" }} />
+                            {r.color}
+                          </span>
+                        ) : <span style={{ color:C.muted }}>—</span>}
+                      </td>
+                      <td>{r.ram_gb ? `${r.ram_gb}GB` : "—"}</td>
+                      <td style={{ color:C.muted }}>{r.storage||"—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!results && (
+        <div className="empty-state" style={{ marginTop:20 }}>
+          Configure filters above and click Search to explore listings.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function scoreCombos(data) {
+  const groups = {};
+  data.forEach(r => {
+    if (!r.gpu || !r.cpu) return;
+    const k = `${r.cpu}|||${r.gpu}`;
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(r);
+  });
+
+  return Object.entries(groups)
+    .map(([k, rows]) => {
+      const [cpu, gpu] = k.split("|||");
+      if (rows.length < 3) return null;
+      const sold   = rows.filter(r=>r.status==="sold");
+      const active = rows.filter(r=>r.status==="active");
+      const st = sold.length / rows.length;
+      const volScore = Math.min(rows.length / 20, 1);
+      const freq = {}; rows.forEach(r=>r.ram_gb&&(freq[r.ram_gb]=(freq[r.ram_gb]||0)+1));
+      const commonRam = Object.entries(freq).sort((a,b)=>b[1]-a[1])[0]?.[0] || 16;
+      const sfreq = {}; rows.forEach(r=>r.storage&&(sfreq[r.storage]=(sfreq[r.storage]||0)+1));
+      const commonStorage = Object.entries(sfreq).sort((a,b)=>b[1]-a[1])[0]?.[0] || "1TB SSD";
+      const avgSold = sold.length ? sold.reduce((s,r)=>s+r.price,0)/sold.length : null;
+      const buildCost = estimateBuildCost(gpu, cpu, commonRam, commonStorage);
+      const marginRaw = avgSold && buildCost ? (avgSold - buildCost) / avgSold : null;
+      const marginScore = marginRaw != null ? Math.max(0, Math.min(marginRaw, 1)) : 0.3;
+      const days = sold.map(r=>daysToSell(r)).filter(v=>v!=null);
+      const avgDays = days.length ? days.reduce((s,v)=>s+v,0)/days.length : null;
+      const speedScore = avgDays != null ? 1 / (1 + avgDays / 14) : 0.5;
+      const compScore  = 1 / (1 + active.length);
+      const score = Math.round(st*35 + volScore*15 + marginScore*25 + speedScore*15 + compScore*10);
+
+      let tag = "📈 Solid Pick";
+      if (st >= 0.8 && active.length <= 2) tag = "🔥 High Demand Low Competition";
+      else if (score >= 75) tag = "🔥 High Demand";
+      else if (active.length === 0) tag = "🎯 Zero Competition";
+      else if (marginRaw && marginRaw > 0.35) tag = "💰 Best Margin";
+      else if (avgDays && avgDays <= 7) tag = "⚡ Fastest Seller";
+
+      let avoidTag = "❌ Poor ROI";
+      if (st < 0.3) avoidTag = "🐌 Slow Mover";
+      else if (active.length >= 4) avoidTag = "⚠️ Oversaturated";
+      else if (avgDays && avgDays > 30) avoidTag = "📦 Long Shelf Life";
+
+      return { cpu, gpu, score, sold:sold.length, active:active.length, total:rows.length,
+        sellThrough:st, avgSold, buildCost, marginRaw, avgDays, commonRam, commonStorage, tag, avoidTag };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>b.score-a.score);
+}
+
+function ScoreBar({ value, show = true }) {
+  if (!show) return null;
+  const color = value >= 75 ? C.accent : value >= 55 ? C.gold : C.danger;
+  return (
+    <div className="score-bar-wrap">
+      <div className="score-bar-track">
+        <div className="score-bar-fill" style={{ width:`${value}%`, background:color }} />
+      </div>
+      <span className="score-num" style={{ color }}>{value}/100</span>
+    </div>
+  );
+}
+
+function RecoCard({ r, rank, showScoreBar = true }) {
+  const profit = r.avgSold && r.buildCost ? Math.round(r.avgSold - r.buildCost) : null;
+  const profitPct = r.marginRaw != null ? Math.round(r.marginRaw * 100) : null;
+  const Stat = ({ label, val, color }) => (
+    <div className="reco-stat">
+      <div className="reco-stat-label">{label}</div>
+      <div className="reco-stat-val" style={{ color: color||C.text }}>{val}</div>
+    </div>
+  );
+  return (
+    <div className="reco-card" style={{ animationDelay:`${rank*60}ms` }}>
+      <div className="reco-card-header">
+        <div className="reco-rank">#{rank}</div>
+        <div className="reco-combo">
+          <span className="reco-cpu">{r.cpu}</span>
+          <span className="reco-plus">+</span>
+          <span className="reco-gpu" style={{ color:brandColor(r.gpu) }}>{r.gpu}</span>
+        </div>
+        <span className="reco-tag">{r.tag}</span>
+      </div>
+      <ScoreBar value={r.score} show={showScoreBar} />
+      <div className="reco-stats">
+        <Stat label="Est. Build Cost" val={fmt$(r.buildCost)} />
+        <Stat label="Avg Sold Price"  val={fmt$(r.avgSold)} color={C.sold} />
+        <Stat label="Est. Profit"     val={profit != null ? `${fmt$(profit)} (${profitPct}%)` : "N/A"} color={profit>0?C.accent:C.danger} />
+        <Stat label="Sell-Through"    val={`${Math.round(r.sellThrough*100)}%`} color={r.sellThrough>0.7?C.accent:C.active} />
+        <Stat label="Avg Days to Sell" val={r.avgDays != null ? `${r.avgDays.toFixed(1)}d` : "N/A"} />
+        <Stat label="Active Competitors" val={`${r.active}`} color={r.active<=2?C.accent:C.danger} />
+        <Stat label="Total Listings"  val={`${r.total}`} />
+        <Stat label="RAM / Storage"   val={`${r.commonRam}GB / ${r.commonStorage}`} />
+      </div>
+    </div>
+  );
+}
+
+function AvoidCard({ r }) {
+  return (
+    <div className="avoid-card">
+      <div className="avoid-combo">{r.cpu} + {r.gpu}</div>
+      <div className="avoid-meta">
+        Score {r.score}/100 · {Math.round(r.sellThrough*100)}% sell-through · {r.active} active
+      </div>
+      <span className="avoid-tag">{r.avoidTag}</span>
+    </div>
+  );
+}
+
+function Recommendations({ data, showScoreBar = true }) {
+  const scored = useMemo(() => scoreCombos(data), [data]);
+  const top = scored.slice(0, 5);
+  const topSet = new Set(top.map(r=>`${r.cpu}|||${r.gpu}`));
+  const avoid = [...scored].reverse().filter(r=>!topSet.has(`${r.cpu}|||${r.gpu}`)).slice(0, 3);
+  const soldN = data.filter(r=>r.status==="sold").length;
+
+  return (
+    <div className="section-body fade-in">
+      <div className="reco-banner">
+        📊 Based on <strong>{soldN}</strong> sold listings — builds most likely to sell quickly at a healthy margin.
+      </div>
+      {scored.length === 0 ? (
+        <div className="empty-state">Not enough data — need at least 3 listings per combo.</div>
+      ) : (
+        <>
+          <div className="reco-list">
+            {top.map((r,i) => <RecoCard key={i} r={r} rank={i+1} showScoreBar={showScoreBar} />)}
+          </div>
+          {avoid.length > 0 && (
+            <>
+              <div className="section-divider"><span>Builds to Avoid</span></div>
+              <p className="avoid-intro">Poor sell-through, oversaturation, or long days on market.</p>
+              {avoid.map((r,i) => <AvoidCard key={i} r={r} />)}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function JawaLogo() {
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="jg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#4361EE" />
+          <stop offset="100%" stopColor="#F72585" />
+        </linearGradient>
+      </defs>
+      <rect width="40" height="40" rx="10" fill="url(#jg)" />
+      <path d="M22 8 L22 22 Q22 29 15 29 L15 33 Q25 33 27 24 L27 8 Z" fill="white" />
+      <rect x="12" y="8" width="10" height="4" rx="1" fill="white" />
+    </svg>
+  );
+}
+
+function Header() {
+  return (
+    <header className="app-header">
+      <div className="header-logo">
+        <JawaLogo />
+        <div>
+          <div className="header-title">Jawa.gg PC Market Trends</div>
+          <div className="header-sub">AstroLabPCs Research Dashboard</div>
+        </div>
+      </div>
+      <div className="header-badge">{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>
+    </header>
+  );
+}
+
+const TABS = [
+  { icon:"📊", label:"Market Trends" },
+  { icon:"🔍", label:"Spec Lookup"   },
+  { icon:"🤖", label:"Build Recs"    },
+];
+
+function TabBar({ tab, setTab }) {
+  return (
+    <nav className="tab-bar">
+      {TABS.map((t,i) => (
+        <button key={i} className={`tab-btn${tab===i?" tab-active":""}`} onClick={()=>setTab(i)}>
+          <span className="tab-icon">{t.icon}</span>
+          <span className="tab-label">{t.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState(0);
+  const data = window.JAWA_DATA || [];
+
+  const defaults = (typeof TWEAK_DEFAULTS !== "undefined") ? TWEAK_DEFAULTS
+    : { accentColor:"#4361EE", activeColor:"#F72585", showScoreBar:false, chartHeight:280 };
+  const [t, setTweak] = useTweaks(defaults);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--accent", t.accentColor || "#4361EE");
+    document.documentElement.style.setProperty("--sold",   t.accentColor || "#4361EE");
+    document.documentElement.style.setProperty("--active", t.activeColor  || "#F72585");
+    C = getPalette(t.accentColor, t.activeColor);
+  }, [t.accentColor, t.activeColor]);
+
+  return (
+    <div className="app-root">
+      <Header />
+      <TabBar tab={tab} setTab={setTab} />
+      <main className="app-main">
+        {tab === 0 && <MarketTrends key={`mt-${t.accentColor}`} data={data} chartHeight={t.chartHeight} />}
+        {tab === 1 && <SpecLookup   key="lookup" data={data} />}
+        {tab === 2 && <Recommendations key={`r-${t.showScoreBar}`} data={data} showScoreBar={t.showScoreBar} />}
+      </main>
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Colors" />
+        <TweakColor label="Accent / Sold color" value={t.accentColor} onChange={v=>setTweak("accentColor",v)} />
+        <TweakColor label="Active listings color" value={t.activeColor} onChange={v=>setTweak("activeColor",v)} />
+        <TweakSection label="Charts" />
+        <TweakSlider label="Chart Height" value={t.chartHeight} min={180} max={480} step={20} unit="px" onChange={v=>setTweak("chartHeight",v)} />
+        <TweakSection label="Recommendations" />
+        <TweakToggle label="Show Score Bar" value={t.showScoreBar} onChange={v=>setTweak("showScoreBar",v)} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+</script>
+</body>
+</html>
